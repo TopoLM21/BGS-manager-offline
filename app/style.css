@@ -75,6 +75,10 @@ textarea {
   gap: 10px;
 }
 
+.topbar-actions {
+  align-items: flex-end;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(300px, 380px) 1fr;
@@ -109,6 +113,14 @@ label {
   color: var(--muted);
   font-size: 13px;
   font-weight: 650;
+}
+
+.author-field {
+  width: 180px;
+}
+
+.author-field input {
+  min-height: 38px;
 }
 
 input,
@@ -189,6 +201,44 @@ textarea:focus {
   margin-top: 12px;
   color: var(--muted);
   line-height: 1.45;
+}
+
+.suggestion-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.suggestion-item,
+.suggestion-note {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  padding: 10px 11px;
+  text-align: left;
+}
+
+.suggestion-item {
+  cursor: pointer;
+}
+
+.suggestion-item:hover {
+  border-color: var(--accent);
+  background: var(--surface-strong);
+}
+
+.suggestion-item strong,
+.suggestion-item span {
+  display: block;
+}
+
+.suggestion-item span,
+.suggestion-note,
+.small-note {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .toolbar {
@@ -326,6 +376,19 @@ textarea:focus {
   line-height: 1.45;
 }
 
+.timeline-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.timeline-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .empty-state {
   color: var(--muted);
 }
@@ -401,6 +464,10 @@ dialog::backdrop {
 
   .topbar-actions,
   .filters {
+    width: 100%;
+  }
+
+  .author-field {
     width: 100%;
   }
 

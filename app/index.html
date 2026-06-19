@@ -13,6 +13,10 @@
         <h1>LeadDangerous</h1>
       </div>
       <div class="topbar-actions">
+        <label class="author-field">
+          Позывной
+          <input id="authorName" type="text" placeholder="CMDR">
+        </label>
         <button id="exportReport" class="button primary">Скачать TXT</button>
         <label class="button">
           Загрузить TXT
@@ -28,8 +32,10 @@
           <form id="systemForm" class="stack">
             <label>
               Система
-              <input id="systemName" name="systemName" type="text" autocomplete="off" placeholder="Например: Sol" required>
+              <input id="systemName" name="systemName" type="text" autocomplete="off" placeholder="Начните вводить название" required>
             </label>
+            <div id="systemSuggestions" class="suggestion-list" aria-live="polite"></div>
+            <div id="lookupResult" class="lookup-result" aria-live="polite"></div>
 
             <div class="split">
               <label>
@@ -53,27 +59,12 @@
             </div>
 
             <label>
-              Что делать
-              <select id="systemObjective" name="systemObjective">
-                <option value="Поднять влияние нужной фракции">Поднять влияние нужной фракции</option>
-                <option value="Снизить влияние мешающей фракции">Снизить влияние мешающей фракции</option>
-                <option value="Стабилизировать состояние системы">Стабилизировать состояние системы</option>
-                <option value="Проверить войны, выборы и состояния">Проверить войны, выборы и состояния</option>
-                <option value="Собрать данные перед решением">Собрать данные перед решением</option>
-              </select>
+              Проблема, план, на что обратить внимание
+              <textarea id="systemProblem" name="systemProblem" rows="5" placeholder="Например: держим влияние выше 60%, после тика проверить состояние войны"></textarea>
             </label>
 
-            <label>
-              Комментарий
-              <textarea id="systemNote" name="systemNote" rows="4" placeholder="Коротко: почему система важна, что делать первым"></textarea>
-            </label>
-
-            <div class="button-row">
-              <button id="lookupSystem" type="button" class="button">Проверить EDSM</button>
-              <button type="submit" class="button primary">Добавить</button>
-            </div>
+            <button type="submit" class="button primary">Добавить систему</button>
           </form>
-          <div id="lookupResult" class="lookup-result" aria-live="polite"></div>
         </section>
 
         <section class="panel">
@@ -84,10 +75,6 @@
               <select id="activitySystem" required></select>
             </label>
             <label>
-              Кто пишет
-              <input id="activityAuthor" type="text" placeholder="CMDR">
-            </label>
-            <label>
               Что сделано
               <textarea id="activityText" rows="4" placeholder="Например: сделал 5 доставок, влияние проверим после тика" required></textarea>
             </label>
@@ -95,7 +82,8 @@
               Миссий, если нужно
               <input id="activityMissions" type="number" min="0" step="1" placeholder="0">
             </label>
-            <button class="button primary" type="submit">Записать</button>
+            <p class="muted small-note">Дата, время и автор попадут в журнал автоматически.</p>
+            <button class="button primary" type="submit">Записать действие</button>
           </form>
         </section>
       </aside>
@@ -120,10 +108,13 @@
 
         <section class="panel journal-panel">
           <div class="toolbar compact">
-            <h2>Последние записи</h2>
+            <div>
+              <h2>Журнал синхронизации</h2>
+              <p id="syncLine" class="muted">Каждая операция имеет ID, автора и время.</p>
+            </div>
             <span id="eventCount" class="muted"></span>
           </div>
-          <div id="activityList" class="activity-list"></div>
+          <div id="timelineList" class="activity-list"></div>
         </section>
       </section>
     </main>

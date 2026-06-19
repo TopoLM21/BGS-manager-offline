@@ -22,34 +22,39 @@
   };
 
   const eventLabels = {
-    "system.upsert": "система",
-    "system.archive": "архив",
-    "activity.add": "действие"
+    "system.upsert": "Система",
+    "system.archive": "Архив",
+    "activity.add": "Действие",
+    "report.export": "Экспорт",
+    "report.import": "Импорт"
   };
 
   const state = loadState();
-  let lastLookup = null;
+  let selectedSystem = null;
+  let searchTimer = 0;
+  let searchRequest = 0;
   let pendingImport = [];
+  let pendingImportMeta = {};
 
   const els = {
+    authorName: document.querySelector("#authorName"),
     systemForm: document.querySelector("#systemForm"),
     systemName: document.querySelector("#systemName"),
+    systemSuggestions: document.querySelector("#systemSuggestions"),
     systemPriority: document.querySelector("#systemPriority"),
     systemStatus: document.querySelector("#systemStatus"),
-    systemObjective: document.querySelector("#systemObjective"),
-    systemNote: document.querySelector("#systemNote"),
-    lookupSystem: document.querySelector("#lookupSystem"),
+    systemProblem: document.querySelector("#systemProblem"),
     lookupResult: document.querySelector("#lookupResult"),
     activityForm: document.querySelector("#activityForm"),
     activitySystem: document.querySelector("#activitySystem"),
-    activityAuthor: document.querySelector("#activityAuthor"),
     activityText: document.querySelector("#activityText"),
     activityMissions: document.querySelector("#activityMissions"),
     searchSystems: document.querySelector("#searchSystems"),
     statusFilter: document.querySelector("#statusFilter"),
     summaryLine: document.querySelector("#summaryLine"),
     systemList: document.querySelector("#systemList"),
-    activityList: document.querySelector("#activityList"),
+    timelineList: document.querySelector("#timelineList"),
+    syncLine: document.querySelector("#syncLine"),
     eventCount: document.querySelector("#eventCount"),
     exportReport: document.querySelector("#exportReport"),
     importReport: document.querySelector("#importReport"),
@@ -64,14 +69,15 @@
   init();
 
   function init() {
-    els.activityAuthor.value = state.author || "";
+    els.authorName.value = state.author || "";
     bindEvents();
     render();
   }
 
   function bindEvents() {
+    els.authorName.addEventListener("input", handleAuthorInput);
+    els.systemName.addEventListener("input", handleSystemNameInput);
     els.systemForm.addEventListener("submit", handleSystemSubmit);
-    els.lookupSystem.addEventListener("click", handleLookup);
     els.activityForm.addEventListener("submit", handleActivitySubmit);
     els.searchSystems.addEventListener("input", renderSystems);
     els.statusFilter.addEventListener("change", renderSystems);
@@ -80,6 +86,7 @@
     els.applyImport.addEventListener("click", applyPendingImport);
     els.cancelImport.addEventListener("click", () => {
       pendingImport = [];
+      pendingImportMeta = {};
     });
   }
 
@@ -126,66 +133,45 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }
 
-  function handleSystemSubmit(event) {
-    event.preventDefault();
-    const name = cleanName(els.systemName.value);
-    if (!name) {
-      showToast("Введите название системы.");
-      return;
-    }
+  function handleAuthorInput() {
+    state.author = els.authorName.value.trim();
+    saveState();
+    renderTimeline();
+  }
 
-    const payload = {
-      name,
-      priority: els.systemPriority.value,
-      status: els.systemStatus.value,
-      objective: els.systemObjective.value,
-      note: els.systemNote.value.trim(),
-      edsm: lastLookup && sameSystem(lastLookup.name, name) ? lastLookup : null,
-      updatedAt: nowIso()
-    };
-
-    recordEvent("system.upsert", payload);
-    els.systemForm.reset();
-    els.systemPriority.value = "normal";
-    els.systemStatus.value = "planned";
-    lastLookup = null;
+  function handleSystemNameInput() {
+    selectedSystem = null;
     els.lookupResult.textContent = "";
-    showToast("Система сохранена.");
-  }
+    window.clearTimeout(searchTimer);
 
-  async function handleLookup() {
-    const name = cleanName(els.systemName.value);
-    if (!name) {
-      showToast("Введите систему для проверки.");
+    const query = cleanName(els.systemName.value);
+    if (query.length < 2) {
+      els.systemSuggestions.innerHTML = "";
       return;
     }
 
-    els.lookupSystem.disabled = true;
-    els.lookupResult.textContent = "Ищу систему в EDSM...";
-
-    try {
-      const result = await lookupEdsmSystem(name);
-      if (!result || !result.name) {
-        lastLookup = null;
-        els.lookupResult.textContent = "EDSM не вернул данные по этой системе. Можно добавить вручную.";
-        return;
+    const requestId = ++searchRequest;
+    els.systemSuggestions.innerHTML = `<div class="suggestion-note">Ищу варианты в EDSM...</div>`;
+    searchTimer = window.setTimeout(async () => {
+      try {
+        const systems = await searchEdsmSystems(query);
+        if (requestId !== searchRequest) {
+          return;
+        }
+        renderSystemSuggestions(systems, query);
+      } catch (error) {
+        console.error(error);
+        if (requestId === searchRequest) {
+          els.systemSuggestions.innerHTML = `<div class="suggestion-note">EDSM сейчас не ответил. Можно добавить вручную.</div>`;
+        }
       }
-
-      lastLookup = result;
-      els.systemName.value = result.name;
-      els.lookupResult.innerHTML = renderLookup(result);
-    } catch (error) {
-      console.error(error);
-      lastLookup = null;
-      els.lookupResult.textContent = "Не удалось обратиться к EDSM. Систему можно добавить вручную.";
-    } finally {
-      els.lookupSystem.disabled = false;
-    }
+    }, 450);
   }
 
-  async function lookupEdsmSystem(name) {
-    const url = new URL("https://www.edsm.net/api-v1/system");
-    url.searchParams.set("systemName", name);
+  async function searchEdsmSystems(query) {
+    const url = new URL("https://www.edsm.net/api-v1/systems");
+    url.searchParams.set("systemName", query);
+    url.searchParams.set("showId", "1");
     url.searchParams.set("showCoordinates", "1");
     url.searchParams.set("showInformation", "1");
     url.searchParams.set("showPermit", "1");
@@ -198,7 +184,44 @@
       throw new Error("EDSM request failed: " + response.status);
     }
 
-    return response.json();
+    const data = await response.json();
+    const systems = Array.isArray(data) ? data : data && data.name ? [data] : [];
+    const normalizedQuery = query.toLowerCase();
+    return systems
+      .filter((system) => system && system.name)
+      .sort((a, b) => {
+        const exactA = a.name.toLowerCase() === normalizedQuery ? 0 : 1;
+        const exactB = b.name.toLowerCase() === normalizedQuery ? 0 : 1;
+        return exactA - exactB || a.name.localeCompare(b.name, "ru");
+      })
+      .slice(0, 8);
+  }
+
+  function renderSystemSuggestions(systems, query) {
+    els.systemSuggestions.innerHTML = "";
+    if (!systems.length) {
+      els.systemSuggestions.innerHTML = `<div class="suggestion-note">По "${escapeHtml(query)}" EDSM ничего не нашел. Можно добавить вручную.</div>`;
+      return;
+    }
+
+    systems.forEach((system) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "suggestion-item";
+      button.innerHTML = `
+        <strong>${escapeHtml(system.name)}</strong>
+        <span>${escapeHtml(systemMeta(system) || "данные EDSM")}</span>
+      `;
+      button.addEventListener("click", () => selectSystem(system));
+      els.systemSuggestions.appendChild(button);
+    });
+  }
+
+  function selectSystem(system) {
+    selectedSystem = system;
+    els.systemName.value = system.name;
+    els.systemSuggestions.innerHTML = "";
+    els.lookupResult.innerHTML = renderLookup(system);
   }
 
   function renderLookup(result) {
@@ -216,14 +239,40 @@
       bits.push("нужен permit" + (result.permitName ? ": " + escapeHtml(result.permitName) : ""));
     }
 
-    return "<strong>" + escapeHtml(result.name) + "</strong><br>" + (bits.join(" · ") || "данные найдены");
+    return "<strong>Выбрано: " + escapeHtml(result.name) + "</strong><br>" + (bits.join(" · ") || "данные найдены");
+  }
+
+  function handleSystemSubmit(event) {
+    event.preventDefault();
+    const name = cleanName(els.systemName.value);
+    if (!name) {
+      showToast("Введите название системы.");
+      return;
+    }
+
+    const edsm = selectedSystem && sameSystem(selectedSystem.name, name) ? selectedSystem : null;
+    recordLocalEvent("system.upsert", {
+      name,
+      priority: els.systemPriority.value,
+      status: els.systemStatus.value,
+      problem: els.systemProblem.value.trim(),
+      edsm,
+      updatedAt: nowIso()
+    });
+
+    els.systemForm.reset();
+    els.systemPriority.value = "normal";
+    els.systemStatus.value = "planned";
+    selectedSystem = null;
+    els.systemSuggestions.innerHTML = "";
+    els.lookupResult.textContent = "";
+    showToast("Система сохранена.");
   }
 
   function handleActivitySubmit(event) {
     event.preventDefault();
     const system = els.activitySystem.value;
     const text = els.activityText.value.trim();
-    const author = els.activityAuthor.value.trim();
     const missions = Number.parseInt(els.activityMissions.value, 10) || 0;
 
     if (!system || !text) {
@@ -231,10 +280,9 @@
       return;
     }
 
-    state.author = author;
-    recordEvent("activity.add", {
+    recordLocalEvent("activity.add", {
       system,
-      author,
+      author: state.author,
       text,
       missions,
       createdAt: nowIso()
@@ -251,7 +299,7 @@
       return;
     }
 
-    recordEvent("system.archive", {
+    recordLocalEvent("system.archive", {
       system: name,
       reason: reason.trim(),
       archivedAt: nowIso()
@@ -268,9 +316,9 @@
     els.systemName.value = system.name;
     els.systemPriority.value = system.priority || "normal";
     els.systemStatus.value = system.status === "archived" ? "paused" : system.status || "planned";
-    els.systemObjective.value = system.objective || els.systemObjective.options[0].value;
-    els.systemNote.value = system.note || "";
-    lastLookup = system.edsm || null;
+    els.systemProblem.value = system.problem || system.note || "";
+    selectedSystem = system.edsm || null;
+    els.systemSuggestions.innerHTML = "";
     els.lookupResult.textContent = system.edsm ? "EDSM-данные уже сохранены для этой системы." : "";
     els.systemName.focus();
   }
@@ -280,8 +328,14 @@
     els.activityText.focus();
   }
 
-  function recordEvent(type, payload) {
-    const event = {
+  function recordLocalEvent(type, payload) {
+    const event = createEvent(type, payload);
+    addEvent(event);
+    return event;
+  }
+
+  function createEvent(type, payload) {
+    return {
       schema: SCHEMA,
       id: makeEventId(),
       source: state.nodeId,
@@ -290,11 +344,17 @@
       type,
       payload
     };
-    applyEvent(event);
+  }
+
+  function addEvent(event) {
+    if (!applyEvent(event)) {
+      return false;
+    }
     state.events.push(event);
     state.appliedEventIds[event.id] = true;
     saveState();
     render();
+    return true;
   }
 
   function applyEvent(event) {
@@ -311,23 +371,29 @@
       const current = state.systems[key] || {
         id: key,
         name: cleanName(payload.name),
-        createdAt: event.createdAt
+        createdAt: event.createdAt,
+        createdBy: event.author || ""
       };
+      const problem = payload.problem ?? payload.note ?? payload.objective ?? current.problem ?? current.note ?? "";
       state.systems[key] = {
         ...current,
         name: cleanName(payload.name) || current.name,
         priority: payload.priority || current.priority || "normal",
         status: payload.status || current.status || "planned",
-        objective: payload.objective || current.objective || "",
-        note: payload.note || "",
+        problem,
+        note: problem,
         edsm: payload.edsm || current.edsm || null,
-        updatedAt: payload.updatedAt || event.createdAt
+        updatedAt: payload.updatedAt || event.createdAt,
+        updatedBy: event.author || current.updatedBy || ""
       };
       return true;
     }
 
     if (event.type === "system.archive") {
       const key = systemKey(event.payload.system);
+      if (!key) {
+        return false;
+      }
       const current = state.systems[key];
       if (!current) {
         state.systems[key] = {
@@ -335,15 +401,18 @@
           name: cleanName(event.payload.system),
           priority: "normal",
           status: "archived",
-          objective: "",
+          problem: event.payload.reason || "",
           note: event.payload.reason || "",
           createdAt: event.createdAt,
-          updatedAt: event.payload.archivedAt || event.createdAt
+          createdBy: event.author || "",
+          updatedAt: event.payload.archivedAt || event.createdAt,
+          updatedBy: event.author || ""
         };
       } else {
         current.status = "archived";
         current.archiveReason = event.payload.reason || "";
         current.updatedAt = event.payload.archivedAt || event.createdAt;
+        current.updatedBy = event.author || current.updatedBy || "";
       }
       return true;
     }
@@ -351,7 +420,7 @@
     if (event.type === "activity.add") {
       const payload = event.payload;
       const system = cleanName(payload.system);
-      if (!system || !payload.text) {
+      if (!system || !payload.text || state.activities.some((item) => item.id === event.id)) {
         return false;
       }
       state.activities.push({
@@ -365,13 +434,17 @@
       return true;
     }
 
+    if (event.type === "report.export" || event.type === "report.import") {
+      return true;
+    }
+
     return false;
   }
 
   function render() {
     renderActivitySystems();
     renderSystems();
-    renderActivities();
+    renderTimeline();
   }
 
   function renderActivitySystems() {
@@ -415,7 +488,7 @@
     const activeCount = allSystems.filter((system) => system.status !== "archived").length;
     const urgentCount = allSystems.filter((system) => system.priority === "urgent" && system.status !== "archived").length;
     els.summaryLine.textContent = allSystems.length
-      ? `${activeCount} активных систем, ${urgentCount} срочных, ${state.activities.length} записей.`
+      ? `${activeCount} активных систем, ${urgentCount} срочных, ${state.activities.length} записей действий.`
       : "Пока нет систем.";
 
     els.systemList.innerHTML = "";
@@ -439,9 +512,9 @@
             <span class="badge status-${escapeAttr(system.status || "planned")}">${statusLabels[system.status] || "План"}</span>
           </div>
         </div>
-        <p><strong>Задача:</strong> ${escapeHtml(system.objective || "Не задано")}</p>
-        <p>${escapeHtml(system.note || "Комментариев пока нет.")}</p>
-        <p class="meta"><strong>Последнее:</strong> ${latest ? escapeHtml(latest.text) : "действий еще нет"}</p>
+        <p><strong>Проблема / план:</strong> ${escapeHtml(system.problem || system.note || "Не задано")}</p>
+        <p class="meta"><strong>Последнее действие:</strong> ${latest ? escapeHtml(latest.text) : "действий еще нет"}</p>
+        <p class="meta"><strong>Обновлено:</strong> ${formatDate(system.updatedAt || system.createdAt)}${system.updatedBy ? " · " + escapeHtml(system.updatedBy) : ""}</p>
         <div class="card-actions">
           <button class="button" data-action="activity" data-system="${escapeAttr(system.name)}">Записать действие</button>
           <button class="button" data-action="edit" data-system="${escapeAttr(system.name)}">Править</button>
@@ -465,29 +538,35 @@
     });
   }
 
-  function renderActivities() {
-    els.eventCount.textContent = `${state.events.length} операций в журнале`;
-    els.activityList.innerHTML = "";
+  function renderTimeline() {
+    els.eventCount.textContent = `${state.events.length} операций`;
+    const importedCount = state.events.filter((event) => event.source && event.source !== state.nodeId).length;
+    els.syncLine.textContent = state.events.length
+      ? `Локальных и импортированных операций: ${state.events.length}. Получено из отчетов: ${importedCount}.`
+      : "Каждая операция имеет ID, автора и время.";
 
-    const activities = [...state.activities]
+    els.timelineList.innerHTML = "";
+    const events = [...state.events]
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .slice(0, 12);
+      .slice(0, 80);
 
-    if (!activities.length) {
-      els.activityList.innerHTML = `<div class="empty-state">Пока нет записей действий.</div>`;
+    if (!events.length) {
+      els.timelineList.innerHTML = `<div class="empty-state">Пока нет операций синхронизации.</div>`;
       return;
     }
 
-    activities.forEach((activity) => {
+    events.forEach((event) => {
       const item = document.createElement("div");
-      item.className = "activity-item";
-      const missions = activity.missions ? ` · миссий: ${activity.missions}` : "";
+      item.className = "activity-item timeline-item";
       item.innerHTML = `
-        <strong>${escapeHtml(activity.system)} <span class="meta">${formatDate(activity.createdAt)}${missions}</span></strong>
-        <p>${escapeHtml(activity.text)}</p>
-        ${activity.author ? `<p class="meta">Автор: ${escapeHtml(activity.author)}</p>` : ""}
+        <div class="timeline-head">
+          <strong>${escapeHtml(eventTitle(event))}</strong>
+          <span class="badge">${escapeHtml(eventLabels[event.type] || event.type)}</span>
+        </div>
+        <p>${escapeHtml(eventText(event))}</p>
+        <p class="meta">${formatDate(event.createdAt)}${event.author ? " · " + escapeHtml(event.author) : " · без автора"} · ${escapeHtml(shortId(event.id))}</p>
       `;
-      els.activityList.appendChild(item);
+      els.timelineList.appendChild(item);
     });
   }
 
@@ -497,10 +576,21 @@
       return;
     }
 
+    const reportId = makeReportId();
+    const exportedAt = nowIso();
+    recordLocalEvent("report.export", {
+      reportId,
+      exportedAt,
+      eventCount: state.events.length + 1
+    });
+
     const text = [
       REPORT_HEADER,
-      "# exportedAt=" + nowIso(),
+      "# reportId=" + reportId,
+      "# exportedAt=" + exportedAt,
       "# source=" + state.nodeId,
+      "# author=" + (state.author || ""),
+      "# events=" + state.events.length,
       ...state.events.map((event) => JSON.stringify(event))
     ].join("\n") + "\n";
 
@@ -508,7 +598,7 @@
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "LeadDangerous-" + fileDate() + ".txt";
+    link.download = "LeadDangerous-" + reportId + ".txt";
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -528,6 +618,12 @@
       try {
         const parsed = parseReport(String(reader.result || ""));
         pendingImport = parsed.events.filter((item) => !state.appliedEventIds[item.id]);
+        pendingImportMeta = {
+          ...parsed.meta,
+          fileName: file.name,
+          totalEvents: parsed.events.length,
+          duplicateEvents: parsed.events.length - pendingImport.length
+        };
         showImportPreview(parsed.errors);
       } catch (error) {
         console.error(error);
@@ -541,9 +637,18 @@
   function parseReport(text) {
     const events = [];
     const errors = [];
+    const meta = {};
     text.split(/\r?\n/).forEach((line, index) => {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) {
+      if (!trimmed) {
+        return;
+      }
+
+      if (trimmed.startsWith("#")) {
+        const match = trimmed.match(/^#\s*([A-Za-z0-9_-]+)=(.*)$/);
+        if (match) {
+          meta[match[1]] = match[2];
+        }
         return;
       }
 
@@ -559,7 +664,7 @@
       }
     });
 
-    return { events, errors };
+    return { events, errors, meta };
   }
 
   function normalizeEvent(event) {
@@ -570,22 +675,28 @@
       author: event.author || "",
       createdAt: event.createdAt || nowIso(),
       type: event.type,
-      payload: event.payload
+      payload: event.payload || {}
     };
   }
 
   function showImportPreview(errors) {
-    const duplicateCount = pendingImport.length;
     const byType = pendingImport.reduce((acc, event) => {
       acc[event.type] = (acc[event.type] || 0) + 1;
       return acc;
     }, {});
 
-    els.importSummary.textContent = duplicateCount
-      ? `Будет применено ${duplicateCount} новых операций. Ошибок: ${errors.length}.`
-      : `Новых операций нет. Ошибок: ${errors.length}.`;
+    els.importSummary.textContent = pendingImport.length
+      ? `Будет применено ${pendingImport.length} новых операций. Уже были у вас: ${pendingImportMeta.duplicateEvents || 0}. Ошибок: ${errors.length}.`
+      : `Новых операций нет. Уже были у вас: ${pendingImportMeta.duplicateEvents || 0}. Ошибок: ${errors.length}.`;
 
     els.importPreview.innerHTML = "";
+    if (pendingImportMeta.reportId || pendingImportMeta.fileName) {
+      const row = document.createElement("div");
+      row.className = "activity-item";
+      row.innerHTML = `<strong>${escapeHtml(pendingImportMeta.reportId || pendingImportMeta.fileName)}</strong><p>${escapeHtml(pendingImportMeta.author || "автор не указан")} · всего операций: ${pendingImportMeta.totalEvents || 0}</p>`;
+      els.importPreview.appendChild(row);
+    }
+
     Object.entries(byType).forEach(([type, count]) => {
       const row = document.createElement("div");
       row.className = "activity-item";
@@ -593,10 +704,10 @@
       els.importPreview.appendChild(row);
     });
 
-    pendingImport.slice(0, 10).forEach((event) => {
+    pendingImport.slice(0, 10).forEach((item) => {
       const row = document.createElement("div");
       row.className = "activity-item";
-      row.innerHTML = `<strong>${escapeHtml(eventLabels[event.type] || event.type)}</strong><p>${escapeHtml(importLine(event))}</p>`;
+      row.innerHTML = `<strong>${escapeHtml(eventLabels[item.type] || item.type)}</strong><p>${escapeHtml(eventText(item))}</p>`;
       els.importPreview.appendChild(row);
     });
 
@@ -635,7 +746,21 @@
       }
     });
 
+    const importEvent = createEvent("report.import", {
+      reportId: pendingImportMeta.reportId || pendingImportMeta.fileName || "unknown-report",
+      fileName: pendingImportMeta.fileName || "",
+      source: pendingImportMeta.source || "",
+      totalEvents: pendingImportMeta.totalEvents || 0,
+      duplicateEvents: pendingImportMeta.duplicateEvents || 0,
+      appliedEvents: applied,
+      importedAt: nowIso()
+    });
+    applyEvent(importEvent);
+    state.events.push(importEvent);
+    state.appliedEventIds[importEvent.id] = true;
+
     pendingImport = [];
+    pendingImportMeta = {};
     saveState();
     render();
     if (els.importDialog.open) {
@@ -644,15 +769,41 @@
     showToast(`Импортировано операций: ${applied}.`);
   }
 
-  function importLine(event) {
+  function eventTitle(event) {
     if (event.type === "system.upsert") {
-      return event.payload.name || "без названия";
+      return `Система: ${event.payload.name || "без названия"}`;
     }
     if (event.type === "system.archive") {
-      return event.payload.system || "без названия";
+      return `Архив: ${event.payload.system || "без названия"}`;
     }
     if (event.type === "activity.add") {
-      return `${event.payload.system || "без системы"}: ${event.payload.text || ""}`;
+      return `Действие: ${event.payload.system || "без системы"}`;
+    }
+    if (event.type === "report.export") {
+      return `Выгрузка отчета: ${event.payload.reportId || shortId(event.id)}`;
+    }
+    if (event.type === "report.import") {
+      return `Загрузка отчета: ${event.payload.reportId || event.payload.fileName || shortId(event.id)}`;
+    }
+    return event.type;
+  }
+
+  function eventText(event) {
+    if (event.type === "system.upsert") {
+      return event.payload.problem || event.payload.note || event.payload.objective || "Система добавлена или обновлена.";
+    }
+    if (event.type === "system.archive") {
+      return event.payload.reason || "Система отправлена в архив.";
+    }
+    if (event.type === "activity.add") {
+      const missions = event.payload.missions ? ` Миссий: ${event.payload.missions}.` : "";
+      return (event.payload.text || "Действие добавлено.") + missions;
+    }
+    if (event.type === "report.export") {
+      return `Создан TXT-отчет, операций в файле: ${event.payload.eventCount || 0}.`;
+    }
+    if (event.type === "report.import") {
+      return `Применено новых операций: ${event.payload.appliedEvents || 0}. Уже было: ${event.payload.duplicateEvents || 0}.`;
     }
     return event.id;
   }
@@ -697,7 +848,10 @@
     if (edsm.information && edsm.information.faction) {
       parts.push(edsm.information.faction);
     }
-    return parts.join(" · ") || "EDSM";
+    if (edsm.requirePermit) {
+      parts.push("permit" + (edsm.permitName ? ": " + edsm.permitName : ""));
+    }
+    return parts.join(" · ");
   }
 
   function formatCoords(coords) {
@@ -709,6 +863,10 @@
 
   function makeEventId() {
     return [compactDate(), state.nodeId, randomToken()].join("-");
+  }
+
+  function makeReportId() {
+    return compactDate() + "-" + randomToken().slice(0, 6);
   }
 
   function randomToken() {
@@ -728,10 +886,6 @@
     return nowIso().replace(/[-:.TZ]/g, "").slice(0, 14);
   }
 
-  function fileDate() {
-    return nowIso().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
-  }
-
   function formatDate(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
@@ -740,9 +894,15 @@
     return date.toLocaleString("ru-RU", {
       day: "2-digit",
       month: "2-digit",
+      year: "2-digit",
       hour: "2-digit",
       minute: "2-digit"
     });
+  }
+
+  function shortId(value) {
+    const text = String(value || "");
+    return text.length > 18 ? text.slice(0, 18) + "..." : text;
   }
 
   function showToast(message) {
