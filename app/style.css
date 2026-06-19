@@ -273,6 +273,11 @@ textarea:focus {
   margin-top: 10px;
 }
 
+#influenceDialog .influence-list {
+  max-height: min(54vh, 480px);
+  overflow: auto;
+}
+
 .faction-choice,
 .influence-row {
   display: grid;
@@ -319,6 +324,7 @@ textarea:focus {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .influence-chart {
@@ -347,6 +353,7 @@ textarea:focus {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  max-width: 100%;
 }
 
 .chart-legend i {
@@ -482,6 +489,17 @@ textarea:focus {
 .system-section h4 {
   margin: 0;
   font-size: 14px;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.section-head .button {
+  flex: 0 0 auto;
 }
 
 .system-activity-list {
@@ -630,5 +648,9 @@ dialog::backdrop {
 
   .influence-row {
     grid-template-columns: 1fr;
+  }
+
+  .section-head {
+    flex-direction: column;
   }
 }

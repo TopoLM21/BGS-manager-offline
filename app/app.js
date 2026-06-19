@@ -35,6 +35,7 @@
   let selectedFactions = [];
   let searchTimer = 0;
   let searchRequest = 0;
+  let influenceSystemName = "";
   let pendingImport = [];
   let pendingImportMeta = {};
 
@@ -52,9 +53,10 @@
     activityForm: document.querySelector("#activityForm"),
     activitySystem: document.querySelector("#activitySystem"),
     activityText: document.querySelector("#activityText"),
-    activityMissions: document.querySelector("#activityMissions"),
     influenceForm: document.querySelector("#influenceForm"),
-    influenceSystem: document.querySelector("#influenceSystem"),
+    influenceDialog: document.querySelector("#influenceDialog"),
+    influenceTitle: document.querySelector("#influenceTitle"),
+    influenceHint: document.querySelector("#influenceHint"),
     influenceRows: document.querySelector("#influenceRows"),
     influenceTotal: document.querySelector("#influenceTotal"),
     normalizeInfluence: document.querySelector("#normalizeInfluence"),
@@ -94,9 +96,9 @@
     els.systemName.addEventListener("input", handleSystemNameInput);
     els.systemForm.addEventListener("submit", handleSystemSubmit);
     els.activityForm.addEventListener("submit", handleActivitySubmit);
-    els.influenceSystem.addEventListener("change", renderInfluenceEditor);
     els.influenceForm.addEventListener("submit", handleInfluenceSubmit);
     els.normalizeInfluence.addEventListener("click", normalizeInfluenceRows);
+    els.influenceForm.querySelector("[data-close-influence]").addEventListener("click", closeInfluenceDialog);
     els.searchSystems.addEventListener("input", renderSystems);
     els.statusFilter.addEventListener("change", renderSystems);
     els.exportReport.addEventListener("click", exportReport);
@@ -260,13 +262,13 @@
       if (!selectedSystem || !sameSystem(selectedSystem.name, system.name)) {
         return;
       }
-      selectedSystem.factions = result.factions;
+      selectedSystem.factions = activeFactions(result.factions);
       selectedSystem.controllingFaction = result.controllingFaction;
-      selectedFactions = result.factions;
-      renderFactionPicker(result.factions, result.controllingFaction);
+      selectedFactions = activeFactions(result.factions);
+      renderFactionPicker(selectedFactions, result.controllingFaction);
     } catch (error) {
       console.error(error);
-      selectedFactions = fallbackFactionsFromSystem(system);
+      selectedFactions = activeFactions(fallbackFactionsFromSystem(system));
       selectedSystem.factions = selectedFactions;
       renderFactionPicker(selectedFactions, null, "EDSM не вернул список фракций. Можно продолжить вручную.");
     }
@@ -290,7 +292,9 @@
     const data = await response.json();
     return {
       controllingFaction: data.controllingFaction || null,
-      factions: (data.factions || []).map(normalizeFaction).filter((faction) => faction.name)
+      factions: (data.factions || [])
+        .map(normalizeFaction)
+        .filter((faction) => faction.name)
     };
   }
 
@@ -327,6 +331,7 @@
   }
 
   function renderFactionPicker(factions, controllingFaction, note) {
+    factions = activeFactions(factions);
     els.factionList.innerHTML = "";
     if (note) {
       els.factionHint.textContent = note;
@@ -436,7 +441,6 @@
     event.preventDefault();
     const system = els.activitySystem.value;
     const text = els.activityText.value.trim();
-    const missions = Number.parseInt(els.activityMissions.value, 10) || 0;
 
     if (!system || !text) {
       showToast("Выберите систему и добавьте текст действия.");
@@ -447,12 +451,10 @@
       system,
       author: state.author,
       text,
-      missions,
       createdAt: nowIso()
     });
 
     els.activityText.value = "";
-    els.activityMissions.value = "";
     showToast("Запись добавлена.");
   }
 
@@ -480,8 +482,8 @@
     els.systemPriority.value = system.priority || "normal";
     els.systemStatus.value = system.status === "archived" ? "paused" : system.status || "planned";
     els.systemProblem.value = system.problem || system.note || "";
-    selectedSystem = system.edsm || { name: system.name, factions: system.factions || [] };
-    selectedFactions = system.factions || [];
+    selectedSystem = system.edsm || { name: system.name, factions: activeFactions(system.factions || []) };
+    selectedFactions = activeFactions(system.factions || []);
     els.systemSuggestions.innerHTML = "";
     els.lookupResult.textContent = system.edsm ? "EDSM-данные уже сохранены для этой системы." : "";
     renderFactionPicker(selectedFactions, system.controllingFaction || null);
@@ -542,6 +544,8 @@
         createdBy: event.author || ""
       };
       const problem = payload.problem ?? payload.note ?? payload.objective ?? current.problem ?? current.note ?? "";
+      const factions = mergeFactions(current.factions || [], payload.factions || []);
+      const activeFactionIds = new Set(factions.map((faction) => String(faction.id || systemKey(faction.name))));
       state.systems[key] = {
         ...current,
         name: cleanName(payload.name) || current.name,
@@ -550,8 +554,8 @@
         problem,
         note: problem,
         edsm: payload.edsm || current.edsm || null,
-        factions: mergeFactions(current.factions || [], payload.factions || []),
-        selectedFactionIds: payload.selectedFactionIds || current.selectedFactionIds || [],
+        factions,
+        selectedFactionIds: (payload.selectedFactionIds || current.selectedFactionIds || []).filter((id) => activeFactionIds.has(String(id))),
         controllingFaction: payload.controllingFaction || current.controllingFaction || payload.edsm?.controllingFaction || null,
         influenceSnapshots: current.influenceSnapshots || [],
         updatedAt: payload.updatedAt || event.createdAt,
@@ -602,7 +606,6 @@
         system,
         author: payload.author || event.author || "",
         text: payload.text,
-        missions: Number(payload.missions) || 0,
         createdAt: payload.createdAt || event.createdAt
       });
       return true;
@@ -636,7 +639,7 @@
           name: faction.name || "",
           influence: clampPercent(Number(faction.influence) || 0),
           locked: Boolean(faction.locked)
-        }))
+        })).filter((faction) => faction.influence > 0)
       };
       const snapshots = (current.influenceSnapshots || []).filter((item) => item.id !== snapshot.id);
       snapshots.push(snapshot);
@@ -663,7 +666,6 @@
 
   function render() {
     renderActivitySystems();
-    renderInfluenceSystems();
     renderSystems();
     renderTimeline();
   }
@@ -690,36 +692,81 @@
     });
   }
 
-  function renderInfluenceSystems() {
-    const activeSystems = getSystems()
-      .filter((system) => system.status !== "archived")
-      .sort(sortSystems);
-    const currentValue = els.influenceSystem.value;
-
-    els.influenceSystem.innerHTML = "";
-    if (!activeSystems.length) {
-      const option = document.createElement("option");
-      option.value = "";
-      option.textContent = "Сначала добавьте систему";
-      els.influenceSystem.appendChild(option);
-      renderInfluenceEditor();
+  function openInfluenceDialog(systemName) {
+    const system = state.systems[systemKey(systemName)];
+    if (!system) {
+      showToast("Система не найдена.");
       return;
     }
 
-    activeSystems.forEach((system) => {
-      const option = document.createElement("option");
-      option.value = system.name;
-      option.textContent = system.name;
-      els.influenceSystem.appendChild(option);
-    });
-    if (currentValue && activeSystems.some((system) => system.name === currentValue)) {
-      els.influenceSystem.value = currentValue;
-    }
+    influenceSystemName = system.name;
+    els.influenceTitle.textContent = `Влияние: ${system.name}`;
+    els.influenceHint.textContent = edsmInfluenceMeta(system);
     renderInfluenceEditor();
+    if (typeof els.influenceDialog.showModal === "function") {
+      els.influenceDialog.showModal();
+    } else {
+      els.influenceDialog.setAttribute("open", "open");
+    }
+  }
+
+  function closeInfluenceDialog() {
+    if (els.influenceDialog.open && typeof els.influenceDialog.close === "function") {
+      els.influenceDialog.close();
+    } else {
+      els.influenceDialog.removeAttribute("open");
+    }
+  }
+
+  async function refreshSystemEdsm(systemName, button) {
+    const system = state.systems[systemKey(systemName)];
+    if (!system) {
+      showToast("Система не найдена.");
+      return;
+    }
+
+    const oldText = button ? button.textContent : "";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Обновляю...";
+    }
+
+    try {
+      const systems = await searchEdsmSystems(system.name);
+      const edsm = systems.find((item) => sameSystem(item.name, system.name)) || systems[0] || system.edsm || { name: system.name };
+      const result = await fetchEdsmFactions(edsm);
+      const factions = activeFactions(result.factions);
+      if (!factions.length) {
+        showToast("EDSM не вернул активных фракций с влиянием выше 0%.");
+        return;
+      }
+
+      const activeIds = new Set(factions.map((faction) => String(faction.id || systemKey(faction.name))));
+      recordLocalEvent("system.upsert", {
+        name: system.name,
+        priority: system.priority || "normal",
+        status: system.status || "planned",
+        problem: system.problem || system.note || "",
+        edsm,
+        factions: result.factions,
+        selectedFactionIds: (system.selectedFactionIds || []).filter((id) => activeIds.has(String(id))),
+        controllingFaction: result.controllingFaction || system.controllingFaction || null,
+        updatedAt: nowIso()
+      });
+      showToast("EDSM-данные обновлены.");
+    } catch (error) {
+      console.error(error);
+      showToast("Не удалось обновить EDSM-данные.");
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = oldText;
+      }
+    }
   }
 
   function renderInfluenceEditor() {
-    const system = state.systems[systemKey(els.influenceSystem.value)];
+    const system = state.systems[systemKey(influenceSystemName)];
     els.influenceRows.innerHTML = "";
     if (!system) {
       els.influenceRows.innerHTML = `<div class="empty-state">Нет системы для замера влияния.</div>`;
@@ -772,10 +819,10 @@
       return latest.factions.map((faction) => ({
         ...faction,
         influence: clampPercent(Number(faction.influence) || 0)
-      }));
+      })).filter((faction) => faction.influence > 0);
     }
 
-    return (system.factions || []).map((faction) => ({
+    return activeFactions(system.factions || []).map((faction) => ({
       id: String(faction.id || systemKey(faction.name)),
       name: faction.name,
       influence: clampPercent((Number(faction.influence) || 0) * 100),
@@ -791,7 +838,7 @@
 
   function handleInfluenceSubmit(event) {
     event.preventDefault();
-    const systemName = els.influenceSystem.value;
+    const systemName = influenceSystemName;
     const rows = readInfluenceRows();
     if (!systemName || !rows.length) {
       showToast("Нет фракций для замера влияния.");
@@ -806,9 +853,10 @@
 
     recordLocalEvent("influence.snapshot", {
       system: systemName,
-      factions: rows,
+      factions: rows.filter((row) => row.influence > 0),
       createdAt: nowIso()
     });
+    closeInfluenceDialog();
     showToast("Замер влияния сохранен.");
   }
 
@@ -906,6 +954,7 @@
 
     systems.forEach((system) => {
       const activities = activitiesFor(system.name);
+      const edsmInfluence = edsmInfluenceMeta(system);
       const card = document.createElement("article");
       card.className = "system-card" + (system.status === "archived" ? " archived" : "");
       card.innerHTML = `
@@ -926,7 +975,13 @@
         <details class="foldout compact-foldout system-details">
           <summary>Открыть систему</summary>
           <section class="system-section">
-            <h4>График влияния</h4>
+            <div class="section-head">
+              <div>
+                <h4>График влияния</h4>
+                <p class="meta">${escapeHtml(edsmInfluence)}</p>
+              </div>
+              <button class="button" data-action="refresh-edsm" data-system="${escapeAttr(system.name)}">Обновить EDSM</button>
+            </div>
             ${renderInfluenceChart(system)}
           </section>
           <section class="system-section">
@@ -941,6 +996,7 @@
           </section>
         </details>
         <div class="card-actions">
+          <button class="button primary" data-action="influence" data-system="${escapeAttr(system.name)}">Добавить влияние</button>
           <button class="button" data-action="edit" data-system="${escapeAttr(system.name)}">Править</button>
           ${system.status !== "archived" ? `<button class="button danger" data-action="archive" data-system="${escapeAttr(system.name)}">В архив</button>` : ""}
         </div>
@@ -949,9 +1005,13 @@
     });
 
     els.systemList.querySelectorAll("button[data-action]").forEach((button) => {
-      button.addEventListener("click", () => {
+      button.addEventListener("click", async () => {
         const system = button.dataset.system;
-        if (button.dataset.action === "edit") {
+        if (button.dataset.action === "influence") {
+          openInfluenceDialog(system);
+        } else if (button.dataset.action === "refresh-edsm") {
+          await refreshSystemEdsm(system, button);
+        } else if (button.dataset.action === "edit") {
           editSystem(system);
         } else if (button.dataset.action === "archive") {
           archiveSystem(system);
@@ -972,7 +1032,6 @@
           <div class="activity-item">
             <strong>${escapeHtml(formatDate(activity.createdAt))}${activity.author ? " · " + escapeHtml(activity.author) : ""}</strong>
             <p>${escapeHtml(activity.text)}</p>
-            ${activity.missions ? `<p class="meta">Миссий: ${escapeHtml(activity.missions)}</p>` : ""}
           </div>
         `).join("")}
       </div>
@@ -981,14 +1040,14 @@
 
   function selectedFactionNames(system) {
     const ids = new Set(system.selectedFactionIds || []);
-    return (system.factions || [])
+    return activeFactions(system.factions || [])
       .filter((faction) => !ids.size || ids.has(String(faction.id || systemKey(faction.name))))
       .map((faction) => faction.name)
       .filter(Boolean);
   }
 
   function renderInfluenceChart(system) {
-    const series = buildInfluenceSeries(system).slice(0, 5);
+    const series = buildInfluenceSeries(system);
     if (!series.length) {
       return `<div class="empty-state">Нет данных влияния. Сохраните ручной замер или выберите систему с историей EDSM.</div>`;
     }
@@ -1004,6 +1063,15 @@
     const padY = 14;
     const graphW = width - padX * 2;
     const graphH = height - padY * 2;
+
+    const grid = [100, 75, 50, 25, 0].map((value) => {
+      const y = padY + (1 - value / 100) * graphH;
+      const labelX = value === 100 ? 2 : 8;
+      return `
+        <line x1="${padX}" y1="${round2(y)}" x2="${width - padX}" y2="${round2(y)}" stroke="#d8e2df" stroke-dasharray="${value === 0 ? "0" : "3 4"}"></line>
+        <text x="${labelX}" y="${round2(y + 4)}" font-size="10" fill="#65726f">${value}</text>
+      `;
+    }).join("");
 
     const lines = series.map((item, index) => {
       const color = colors[index % colors.length];
@@ -1031,8 +1099,7 @@
         <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="График влияния">
           <line x1="${padX}" y1="${padY}" x2="${padX}" y2="${height - padY}" stroke="#d8e2df"></line>
           <line x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}" stroke="#d8e2df"></line>
-          <text x="2" y="${padY + 4}" font-size="10" fill="#65726f">100</text>
-          <text x="8" y="${height - padY}" font-size="10" fill="#65726f">0</text>
+          ${grid}
           ${lines}
         </svg>
         <div class="chart-legend">${legend}</div>
@@ -1041,9 +1108,7 @@
   }
 
   function buildInfluenceSeries(system) {
-    const selectedIds = new Set(system.selectedFactionIds || []);
-    const factions = (system.factions || [])
-      .filter((faction) => !selectedIds.size || selectedIds.has(String(faction.id || systemKey(faction.name))))
+    const factions = activeFactions(system.factions || [])
       .sort((a, b) => Number(b.influence || 0) - Number(a.influence || 0));
 
     return factions.map((faction) => {
@@ -1139,6 +1204,7 @@
 
     selectedSystem = null;
     selectedFactions = [];
+    influenceSystemName = "";
     pendingImport = [];
     pendingImportMeta = {};
     searchRequest += 1;
@@ -1154,6 +1220,7 @@
     els.factionList.innerHTML = "";
     els.systemProblem.disabled = false;
     els.importReport.value = "";
+    closeInfluenceDialog();
     saveState();
     render();
     showToast("Все локальные данные очищены.");
@@ -1388,8 +1455,7 @@
       return event.payload.reason || "Система отправлена в архив.";
     }
     if (event.type === "activity.add") {
-      const missions = event.payload.missions ? ` Миссий: ${event.payload.missions}.` : "";
-      return (event.payload.text || "Действие добавлено.") + missions;
+      return event.payload.text || "Действие добавлено.";
     }
     if (event.type === "influence.snapshot") {
       const total = sumInfluence(event.payload.factions || []);
@@ -1436,6 +1502,37 @@
     return systemKey(a) === systemKey(b);
   }
 
+  function activeFactions(factions) {
+    return (factions || []).filter(factionHasInfluence);
+  }
+
+  function factionHasInfluence(faction) {
+    return Number(faction && faction.influence) > 0;
+  }
+
+  function latestEdsmInfluenceTime(system) {
+    const times = [];
+    activeFactions(system.factions || []).forEach((faction) => {
+      Object.keys(faction.influenceHistory || {}).forEach((value) => {
+        const unix = Number(value);
+        if (Number.isFinite(unix) && unix > 0) {
+          times.push(unix * 1000);
+        }
+      });
+    });
+    return times.length ? Math.max(...times) : null;
+  }
+
+  function edsmInfluenceMeta(system) {
+    const latest = latestEdsmInfluenceTime(system);
+    if (!latest) {
+      return "EDSM-история влияния не сохранена.";
+    }
+
+    const ageDays = Math.floor((Date.now() - latest) / 86400000);
+    return `Последняя запись влияния EDSM: ${formatDate(new Date(latest).toISOString())}${ageDays >= 3 ? ` · данные старше ${ageDays} дн.` : ""}`;
+  }
+
   function mergeFactions(current, incoming) {
     const map = new Map();
     current.forEach((faction) => {
@@ -1452,7 +1549,7 @@
         name: faction.name || existing.name || id
       });
     });
-    return Array.from(map.values());
+    return activeFactions(Array.from(map.values()));
   }
 
   function sumInfluence(rows) {
