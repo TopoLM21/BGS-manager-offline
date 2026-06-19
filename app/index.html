@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LeadDangerous</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">BGS offline sync</p>
+        <h1>LeadDangerous</h1>
+      </div>
+      <div class="topbar-actions">
+        <button id="exportReport" class="button primary">Скачать TXT</button>
+        <label class="button">
+          Загрузить TXT
+          <input id="importReport" type="file" accept=".txt,text/plain">
+        </label>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar">
+        <section class="panel">
+          <h2>Новая система</h2>
+          <form id="systemForm" class="stack">
+            <label>
+              Система
+              <input id="systemName" name="systemName" type="text" autocomplete="off" placeholder="Например: Sol" required>
+            </label>
+
+            <div class="split">
+              <label>
+                Срочность
+                <select id="systemPriority" name="systemPriority">
+                  <option value="normal">Обычная</option>
+                  <option value="high">Высокая</option>
+                  <option value="urgent">Срочно</option>
+                  <option value="low">Низкая</option>
+                </select>
+              </label>
+              <label>
+                Статус
+                <select id="systemStatus" name="systemStatus">
+                  <option value="planned">План</option>
+                  <option value="active">В работе</option>
+                  <option value="paused">Пауза</option>
+                  <option value="done">Готово</option>
+                </select>
+              </label>
+            </div>
+
+            <label>
+              Что делать
+              <select id="systemObjective" name="systemObjective">
+                <option value="Поднять влияние нужной фракции">Поднять влияние нужной фракции</option>
+                <option value="Снизить влияние мешающей фракции">Снизить влияние мешающей фракции</option>
+                <option value="Стабилизировать состояние системы">Стабилизировать состояние системы</option>
+                <option value="Проверить войны, выборы и состояния">Проверить войны, выборы и состояния</option>
+                <option value="Собрать данные перед решением">Собрать данные перед решением</option>
+              </select>
+            </label>
+
+            <label>
+              Комментарий
+              <textarea id="systemNote" name="systemNote" rows="4" placeholder="Коротко: почему система важна, что делать первым"></textarea>
+            </label>
+
+            <div class="button-row">
+              <button id="lookupSystem" type="button" class="button">Проверить EDSM</button>
+              <button type="submit" class="button primary">Добавить</button>
+            </div>
+          </form>
+          <div id="lookupResult" class="lookup-result" aria-live="polite"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Запись действия</h2>
+          <form id="activityForm" class="stack">
+            <label>
+              Система
+              <select id="activitySystem" required></select>
+            </label>
+            <label>
+              Кто пишет
+              <input id="activityAuthor" type="text" placeholder="CMDR">
+            </label>
+            <label>
+              Что сделано
+              <textarea id="activityText" rows="4" placeholder="Например: сделал 5 доставок, влияние проверим после тика" required></textarea>
+            </label>
+            <label>
+              Миссий, если нужно
+              <input id="activityMissions" type="number" min="0" step="1" placeholder="0">
+            </label>
+            <button class="button primary" type="submit">Записать</button>
+          </form>
+        </section>
+      </aside>
+
+      <section class="content">
+        <div class="toolbar">
+          <div>
+            <h2>Системы</h2>
+            <p id="summaryLine" class="muted">Пока нет систем.</p>
+          </div>
+          <div class="filters">
+            <input id="searchSystems" type="search" placeholder="Фильтр по системам">
+            <select id="statusFilter" aria-label="Фильтр по статусу">
+              <option value="active">Активные</option>
+              <option value="all">Все</option>
+              <option value="archived">Архив</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="systemList" class="system-list"></div>
+
+        <section class="panel journal-panel">
+          <div class="toolbar compact">
+            <h2>Последние записи</h2>
+            <span id="eventCount" class="muted"></span>
+          </div>
+          <div id="activityList" class="activity-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="importDialog">
+      <form method="dialog" class="dialog-content">
+        <h2>Импорт отчета</h2>
+        <p id="importSummary" class="muted"></p>
+        <div id="importPreview" class="import-preview"></div>
+        <div class="button-row end">
+          <button id="cancelImport" class="button" value="cancel">Отмена</button>
+          <button id="applyImport" class="button primary" value="default">Применить</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>

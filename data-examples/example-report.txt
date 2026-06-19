@@ -1,0 +1,4 @@
+# LEADDANGEROUS REPORT v1
+# Это пример TXT-отчета. Его можно загрузить через кнопку "Загрузить TXT".
+{"schema":"LeadDangerous.Event/v1","id":"example-20260619-0001","source":"example","author":"CMDR Topo","createdAt":"2026-06-19T12:00:00.000Z","type":"system.upsert","payload":{"name":"Sol","priority":"high","status":"active","objective":"Поднять влияние нужной фракции","note":"Тестовая система для проверки обмена отчетами.","edsm":null,"updatedAt":"2026-06-19T12:00:00.000Z"}}
+{"schema":"LeadDangerous.Event/v1","id":"example-20260619-0002","source":"example","author":"CMDR Topo","createdAt":"2026-06-19T12:05:00.000Z","type":"activity.add","payload":{"system":"Sol","author":"CMDR Topo","text":"Сделал 4 миссии доставки, результат проверим после тика.","missions":4,"createdAt":"2026-06-19T12:05:00.000Z"}}
