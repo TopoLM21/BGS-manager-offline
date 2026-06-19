@@ -184,6 +184,14 @@ textarea:focus {
   color: var(--danger);
 }
 
+.journal-button {
+  gap: 8px;
+}
+
+.journal-button .badge {
+  background: var(--surface-strong);
+}
+
 .button input[type="file"] {
   display: none;
 }
@@ -458,6 +466,29 @@ textarea:focus {
   margin-top: auto;
 }
 
+.system-details {
+  display: block;
+}
+
+.system-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.system-section h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.system-activity-list {
+  max-height: 360px;
+  overflow: auto;
+}
+
 .activity-list {
   display: flex;
   flex-direction: column;
@@ -520,6 +551,12 @@ dialog::backdrop {
   flex-direction: column;
   gap: 8px;
   max-height: 360px;
+  overflow: auto;
+  margin: 14px 0;
+}
+
+.sync-dialog-list {
+  max-height: min(62vh, 520px);
   overflow: auto;
   margin: 14px 0;
 }

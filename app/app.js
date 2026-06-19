@@ -67,6 +67,9 @@
     eventCount: document.querySelector("#eventCount"),
     exportReport: document.querySelector("#exportReport"),
     importReport: document.querySelector("#importReport"),
+    openSyncJournal: document.querySelector("#openSyncJournal"),
+    clearAllData: document.querySelector("#clearAllData"),
+    syncDialog: document.querySelector("#syncDialog"),
     importDialog: document.querySelector("#importDialog"),
     importSummary: document.querySelector("#importSummary"),
     importPreview: document.querySelector("#importPreview"),
@@ -98,6 +101,8 @@
     els.statusFilter.addEventListener("change", renderSystems);
     els.exportReport.addEventListener("click", exportReport);
     els.importReport.addEventListener("change", handleImportFile);
+    els.openSyncJournal.addEventListener("click", openSyncJournal);
+    els.clearAllData.addEventListener("click", clearAllData);
     els.applyImport.addEventListener("click", applyPendingImport);
     els.cancelImport.addEventListener("click", () => {
       pendingImport = [];
@@ -488,11 +493,6 @@
     });
     updateFactionPlanGate();
     els.systemName.focus();
-  }
-
-  function pickActivitySystem(name) {
-    els.activitySystem.value = name;
-    els.activityText.focus();
   }
 
   function recordLocalEvent(type, payload) {
@@ -905,7 +905,7 @@
     }
 
     systems.forEach((system) => {
-      const latest = latestActivityFor(system.name);
+      const activities = activitiesFor(system.name);
       const card = document.createElement("article");
       card.className = "system-card" + (system.status === "archived" ? " archived" : "");
       card.innerHTML = `
@@ -921,14 +921,26 @@
         </div>
         <p><strong>Проблема / план:</strong> ${escapeHtml(system.problem || system.note || "Не задано")}</p>
         <p class="meta"><strong>Фракции плана:</strong> ${escapeHtml(selectedFactionNames(system).join(", ") || "не выбраны")}</p>
-        <p class="meta"><strong>Последнее действие:</strong> ${latest ? escapeHtml(latest.text) : "действий еще нет"}</p>
+        <p class="meta"><strong>Действия:</strong> ${activities.length ? `${activities.length} записей, последняя ${formatDate(activities[0].createdAt)}` : "действий еще нет"}</p>
         <p class="meta"><strong>Обновлено:</strong> ${formatDate(system.updatedAt || system.createdAt)}${system.updatedBy ? " · " + escapeHtml(system.updatedBy) : ""}</p>
-        <details class="foldout compact-foldout">
-          <summary>Влияние и график</summary>
-          ${renderInfluenceChart(system)}
+        <details class="foldout compact-foldout system-details">
+          <summary>Открыть систему</summary>
+          <section class="system-section">
+            <h4>График влияния</h4>
+            ${renderInfluenceChart(system)}
+          </section>
+          <section class="system-section">
+            <h4>Текущие задачи</h4>
+            <p>${escapeHtml(system.problem || system.note || "План пока не задан.")}</p>
+            <p class="meta"><strong>Фракции плана:</strong> ${escapeHtml(selectedFactionNames(system).join(", ") || "не выбраны")}</p>
+            <p class="meta"><strong>Статус:</strong> ${escapeHtml(statusLabels[system.status] || "План")} · <strong>Срочность:</strong> ${escapeHtml(priorityLabels[system.priority] || "Обычная")}</p>
+          </section>
+          <section class="system-section">
+            <h4>Список действий</h4>
+            ${renderSystemActivities(system.name)}
+          </section>
         </details>
         <div class="card-actions">
-          <button class="button" data-action="activity" data-system="${escapeAttr(system.name)}">Записать действие</button>
           <button class="button" data-action="edit" data-system="${escapeAttr(system.name)}">Править</button>
           ${system.status !== "archived" ? `<button class="button danger" data-action="archive" data-system="${escapeAttr(system.name)}">В архив</button>` : ""}
         </div>
@@ -939,15 +951,32 @@
     els.systemList.querySelectorAll("button[data-action]").forEach((button) => {
       button.addEventListener("click", () => {
         const system = button.dataset.system;
-        if (button.dataset.action === "activity") {
-          pickActivitySystem(system);
-        } else if (button.dataset.action === "edit") {
+        if (button.dataset.action === "edit") {
           editSystem(system);
         } else if (button.dataset.action === "archive") {
           archiveSystem(system);
         }
       });
     });
+  }
+
+  function renderSystemActivities(systemName) {
+    const activities = activitiesFor(systemName);
+    if (!activities.length) {
+      return `<div class="empty-state">Действий по этой системе пока нет.</div>`;
+    }
+
+    return `
+      <div class="activity-list system-activity-list">
+        ${activities.map((activity) => `
+          <div class="activity-item">
+            <strong>${escapeHtml(formatDate(activity.createdAt))}${activity.author ? " · " + escapeHtml(activity.author) : ""}</strong>
+            <p>${escapeHtml(activity.text)}</p>
+            ${activity.missions ? `<p class="meta">Миссий: ${escapeHtml(activity.missions)}</p>` : ""}
+          </div>
+        `).join("")}
+      </div>
+    `;
   }
 
   function selectedFactionNames(system) {
@@ -1074,6 +1103,60 @@
       `;
       els.timelineList.appendChild(item);
     });
+  }
+
+  function openSyncJournal() {
+    renderTimeline();
+    if (typeof els.syncDialog.showModal === "function") {
+      els.syncDialog.showModal();
+    } else {
+      window.alert(els.syncLine.textContent);
+    }
+  }
+
+  function clearAllData() {
+    const first = window.confirm("Очистить все локальные данные LeadDangerous на этом компьютере?");
+    if (!first) {
+      return;
+    }
+
+    const second = window.confirm("Это удалит системы, действия, замеры влияния и журнал синхронизации. Продолжить?");
+    if (!second) {
+      return;
+    }
+
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(NODE_KEY);
+    const freshNodeId = getNodeId();
+
+    state.version = 1;
+    state.nodeId = freshNodeId;
+    state.author = "";
+    state.systems = {};
+    state.activities = [];
+    state.events = [];
+    state.appliedEventIds = {};
+
+    selectedSystem = null;
+    selectedFactions = [];
+    pendingImport = [];
+    pendingImportMeta = {};
+    searchRequest += 1;
+    window.clearTimeout(searchTimer);
+
+    els.authorName.value = "";
+    els.systemForm.reset();
+    els.activityForm.reset();
+    els.influenceForm.reset();
+    els.systemSuggestions.innerHTML = "";
+    els.lookupResult.textContent = "";
+    els.factionHint.textContent = "Выберите систему из списка EDSM, чтобы загрузить фракции.";
+    els.factionList.innerHTML = "";
+    els.systemProblem.disabled = false;
+    els.importReport.value = "";
+    saveState();
+    render();
+    showToast("Все локальные данные очищены.");
   }
 
   function exportReport() {
@@ -1325,11 +1408,11 @@
     return Object.values(state.systems);
   }
 
-  function latestActivityFor(systemName) {
+  function activitiesFor(systemName) {
     const key = systemKey(systemName);
     return [...state.activities]
       .filter((activity) => systemKey(activity.system) === key)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   function sortSystems(a, b) {

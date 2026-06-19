@@ -22,6 +22,11 @@
           Загрузить TXT
           <input id="importReport" type="file" accept=".txt,text/plain">
         </label>
+        <button id="openSyncJournal" class="button journal-button" type="button">
+          Журнал
+          <span id="eventCount" class="badge">0 операций</span>
+        </button>
+        <button id="clearAllData" class="button danger" type="button">Очистить данные</button>
       </div>
     </header>
 
@@ -128,19 +133,23 @@
         </div>
 
         <div id="systemList" class="system-list"></div>
-
-        <section class="panel journal-panel">
-          <div class="toolbar compact">
-            <div>
-              <h2>Журнал синхронизации</h2>
-              <p id="syncLine" class="muted">Каждая операция имеет ID, автора и время.</p>
-            </div>
-            <span id="eventCount" class="muted"></span>
-          </div>
-          <div id="timelineList" class="activity-list"></div>
-        </section>
       </section>
     </main>
+
+    <dialog id="syncDialog">
+      <form method="dialog" class="dialog-content">
+        <div class="toolbar compact">
+          <div>
+            <h2>Журнал синхронизации</h2>
+            <p id="syncLine" class="muted">Каждая операция имеет ID, автора и время.</p>
+          </div>
+        </div>
+        <div id="timelineList" class="activity-list sync-dialog-list"></div>
+        <div class="button-row end">
+          <button class="button primary" value="default">Закрыть</button>
+        </div>
+      </form>
+    </dialog>
 
     <dialog id="importDialog">
       <form method="dialog" class="dialog-content">
