@@ -241,6 +241,112 @@ textarea:focus {
   font-size: 13px;
 }
 
+.foldout {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fff;
+}
+
+.foldout summary {
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.compact-foldout {
+  box-shadow: none;
+}
+
+.faction-list,
+.influence-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.faction-choice,
+.influence-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: #fff;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.faction-choice small,
+.influence-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.influence-row {
+  grid-template-columns: minmax(0, 1fr) 92px auto;
+}
+
+.influence-row input[type="number"] {
+  padding: 8px;
+}
+
+.lock-control {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.lock-control input {
+  width: auto;
+}
+
+.influence-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.influence-chart {
+  margin-top: 10px;
+}
+
+.influence-chart svg {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.chart-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
 .toolbar {
   justify-content: space-between;
   margin-bottom: 14px;
@@ -418,6 +524,16 @@ dialog::backdrop {
   margin: 14px 0;
 }
 
+.debug-output {
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f7faf9;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
 .toast {
   position: fixed;
   right: 18px;
@@ -473,5 +589,9 @@ dialog::backdrop {
 
   .topbar-actions .button {
     flex: 1;
+  }
+
+  .influence-row {
+    grid-template-columns: 1fr;
   }
 }

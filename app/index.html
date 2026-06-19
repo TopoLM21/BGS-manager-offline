@@ -10,7 +10,7 @@
     <header class="topbar">
       <div>
         <p class="eyebrow">BGS offline sync</p>
-        <h1>LeadDangerous</h1>
+        <h1 id="appTitle" title="Двойной клик откроет сервисную панель">LeadDangerous</h1>
       </div>
       <div class="topbar-actions">
         <label class="author-field">
@@ -63,6 +63,12 @@
               <textarea id="systemProblem" name="systemProblem" rows="5" placeholder="Например: держим влияние выше 60%, после тика проверить состояние войны"></textarea>
             </label>
 
+            <details id="factionDetails" class="foldout" open>
+              <summary>Фракции EDSM</summary>
+              <p id="factionHint" class="muted small-note">Выберите систему из списка EDSM, чтобы загрузить фракции.</p>
+              <div id="factionList" class="faction-list"></div>
+            </details>
+
             <button type="submit" class="button primary">Добавить систему</button>
           </form>
         </section>
@@ -84,6 +90,23 @@
             </label>
             <p class="muted small-note">Дата, время и автор попадут в журнал автоматически.</p>
             <button class="button primary" type="submit">Записать действие</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>Влияние</h2>
+          <form id="influenceForm" class="stack">
+            <label>
+              Система
+              <select id="influenceSystem" required></select>
+            </label>
+            <div id="influenceRows" class="influence-list"></div>
+            <div class="influence-toolbar">
+              <span id="influenceTotal" class="badge">Итого: 0%</span>
+              <button id="normalizeInfluence" type="button" class="button">Нормализовать</button>
+            </div>
+            <p class="muted small-note">Измененное поле получает замок. Остальные незакрытые фракции автоматически перераспределяются до 100%.</p>
+            <button class="button primary" type="submit">Сохранить замер</button>
           </form>
         </section>
       </aside>
@@ -127,6 +150,17 @@
         <div class="button-row end">
           <button id="cancelImport" class="button" value="cancel">Отмена</button>
           <button id="applyImport" class="button primary" value="default">Применить</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="debugDialog">
+      <form method="dialog" class="dialog-content">
+        <h2>Сервисная панель</h2>
+        <p class="muted">Скрытая диагностика локального состояния и BGS-логики.</p>
+        <pre id="debugOutput" class="debug-output"></pre>
+        <div class="button-row end">
+          <button class="button primary" value="default">Закрыть</button>
         </div>
       </form>
     </dialog>

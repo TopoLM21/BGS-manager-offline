@@ -3,6 +3,7 @@
 # exportedAt=2026-06-19T12:00:00.000Z
 # source=example-node
 # author=CMDR Topo
-# events=2
-{"schema":"LeadDangerous.Event/v1","id":"example-20260619-0001","source":"example-node","author":"CMDR Topo","createdAt":"2026-06-19T12:00:00.000Z","type":"system.upsert","payload":{"name":"Sol","priority":"high","status":"active","problem":"Проверить влияние после тика и держать нужную фракцию выше безопасного порога.","edsm":null,"updatedAt":"2026-06-19T12:00:00.000Z"}}
-{"schema":"LeadDangerous.Event/v1","id":"example-20260619-0002","source":"example-node","author":"CMDR Topo","createdAt":"2026-06-19T12:05:00.000Z","type":"activity.add","payload":{"system":"Sol","author":"CMDR Topo","text":"Сделал 4 миссии доставки, результат проверим после тика.","missions":4,"createdAt":"2026-06-19T12:05:00.000Z"}}
+# events=3
+{"schema":"LeadDangerous.Event/v1","id":"example-20260619-0001","source":"example-node","author":"CMDR Topo","createdAt":"2026-06-19T12:00:00.000Z","type":"system.upsert","payload":{"name":"Sol","priority":"high","status":"active","problem":"Проверить влияние после тика и держать Mother Gaia выше безопасного порога.","edsm":null,"factions":[{"id":"mother-gaia","name":"Mother Gaia","influence":0.642,"state":"None"},{"id":"sol-workers-party","name":"Sol Workers' Party","influence":0.358,"state":"None"}],"selectedFactionIds":["mother-gaia"],"updatedAt":"2026-06-19T12:00:00.000Z"}}
+{"schema":"LeadDangerous.Event/v1","id":"example-20260619-0002","source":"example-node","author":"CMDR Topo","createdAt":"2026-06-19T12:03:00.000Z","type":"influence.snapshot","payload":{"system":"Sol","createdAt":"2026-06-19T12:03:00.000Z","factions":[{"id":"mother-gaia","name":"Mother Gaia","influence":64.2,"locked":true},{"id":"sol-workers-party","name":"Sol Workers' Party","influence":35.8,"locked":false}]}}
+{"schema":"LeadDangerous.Event/v1","id":"example-20260619-0003","source":"example-node","author":"CMDR Topo","createdAt":"2026-06-19T12:05:00.000Z","type":"activity.add","payload":{"system":"Sol","author":"CMDR Topo","text":"Сделал 4 миссии доставки, результат проверим после тика.","missions":4,"createdAt":"2026-06-19T12:05:00.000Z"}}
