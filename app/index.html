@@ -151,6 +151,33 @@
       </form>
     </dialog>
 
+    <dialog id="activityEditDialog">
+      <form id="activityEditForm" class="dialog-content stack">
+        <h2>Редактировать действие</h2>
+        <input id="activityEditId" type="hidden">
+        <label>
+          Что сделано
+          <textarea id="activityEditText" rows="5" required></textarea>
+        </label>
+        <div class="button-row end">
+          <button class="button" type="button" data-close-activity-edit>Отмена</button>
+          <button class="button primary" type="submit">Сохранить</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="activityDeleteDialog">
+      <form id="activityDeleteForm" class="dialog-content stack">
+        <h2>Удалить действие?</h2>
+        <input id="activityDeleteId" type="hidden">
+        <p id="activityDeleteText" class="muted"></p>
+        <div class="button-row end">
+          <button class="button" type="button" data-close-activity-delete>Отмена</button>
+          <button class="button danger" type="submit">Удалить</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog id="importDialog">
       <form method="dialog" class="dialog-content">
         <h2>Импорт отчета</h2>

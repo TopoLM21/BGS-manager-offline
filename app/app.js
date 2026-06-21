@@ -25,6 +25,8 @@
     "system.upsert": "Система",
     "system.archive": "Архив",
     "activity.add": "Действие",
+    "activity.update": "Правка действия",
+    "activity.delete": "Удаление действия",
     "influence.snapshot": "Влияние",
     "report.export": "Экспорт",
     "report.import": "Импорт"
@@ -38,6 +40,7 @@
   let influenceSystemName = "";
   let pendingImport = [];
   let pendingImportMeta = {};
+  const chartHiddenFactions = {};
 
   const els = {
     authorName: document.querySelector("#authorName"),
@@ -53,6 +56,14 @@
     activityForm: document.querySelector("#activityForm"),
     activitySystem: document.querySelector("#activitySystem"),
     activityText: document.querySelector("#activityText"),
+    activityEditDialog: document.querySelector("#activityEditDialog"),
+    activityEditForm: document.querySelector("#activityEditForm"),
+    activityEditId: document.querySelector("#activityEditId"),
+    activityEditText: document.querySelector("#activityEditText"),
+    activityDeleteDialog: document.querySelector("#activityDeleteDialog"),
+    activityDeleteForm: document.querySelector("#activityDeleteForm"),
+    activityDeleteId: document.querySelector("#activityDeleteId"),
+    activityDeleteText: document.querySelector("#activityDeleteText"),
     influenceForm: document.querySelector("#influenceForm"),
     influenceDialog: document.querySelector("#influenceDialog"),
     influenceTitle: document.querySelector("#influenceTitle"),
@@ -96,11 +107,16 @@
     els.systemName.addEventListener("input", handleSystemNameInput);
     els.systemForm.addEventListener("submit", handleSystemSubmit);
     els.activityForm.addEventListener("submit", handleActivitySubmit);
+    els.activityEditForm.addEventListener("submit", handleActivityEditSubmit);
+    els.activityEditForm.querySelector("[data-close-activity-edit]").addEventListener("click", closeActivityEditDialog);
+    els.activityDeleteForm.addEventListener("submit", handleActivityDeleteSubmit);
+    els.activityDeleteForm.querySelector("[data-close-activity-delete]").addEventListener("click", closeActivityDeleteDialog);
     els.influenceForm.addEventListener("submit", handleInfluenceSubmit);
     els.normalizeInfluence.addEventListener("click", normalizeInfluenceRows);
     els.influenceForm.querySelector("[data-close-influence]").addEventListener("click", closeInfluenceDialog);
     els.searchSystems.addEventListener("input", renderSystems);
     els.statusFilter.addEventListener("change", renderSystems);
+    els.systemList.addEventListener("click", handleSystemListClick);
     els.exportReport.addEventListener("click", exportReport);
     els.importReport.addEventListener("change", handleImportFile);
     els.openSyncJournal.addEventListener("click", openSyncJournal);
@@ -125,7 +141,9 @@
           systems: parsed.systems || {},
           activities: parsed.activities || [],
           events: parsed.events || [],
-          appliedEventIds: parsed.appliedEventIds || {}
+          appliedEventIds: parsed.appliedEventIds || {},
+          deletedActivityIds: parsed.deletedActivityIds || {},
+          pendingActivityUpdates: parsed.pendingActivityUpdates || {}
         };
       } catch (error) {
         console.warn("Cannot parse saved state", error);
@@ -139,7 +157,9 @@
       systems: {},
       activities: [],
       events: [],
-      appliedEventIds: {}
+      appliedEventIds: {},
+      deletedActivityIds: {},
+      pendingActivityUpdates: {}
     };
   }
 
@@ -159,6 +179,7 @@
   function handleAuthorInput() {
     state.author = els.authorName.value.trim();
     saveState();
+    renderSystems();
     renderTimeline();
   }
 
@@ -601,13 +622,56 @@
       if (!system || !payload.text || state.activities.some((item) => item.id === event.id)) {
         return false;
       }
+      if (state.deletedActivityIds[event.id]) {
+        return true;
+      }
+      const pendingUpdate = state.pendingActivityUpdates[event.id] || null;
       state.activities.push({
         id: event.id,
         system,
         author: payload.author || event.author || "",
-        text: payload.text,
-        createdAt: payload.createdAt || event.createdAt
+        text: pendingUpdate ? pendingUpdate.text : payload.text,
+        createdAt: payload.createdAt || event.createdAt,
+        updatedAt: pendingUpdate ? pendingUpdate.updatedAt : "",
+        updatedBy: pendingUpdate ? pendingUpdate.updatedBy : ""
       });
+      return true;
+    }
+
+    if (event.type === "activity.update") {
+      const payload = event.payload;
+      const activityId = String(payload.activityId || "");
+      const text = String(payload.text || "").trim();
+      if (!activityId || !text) {
+        return false;
+      }
+      if (state.deletedActivityIds[activityId]) {
+        return true;
+      }
+      const activity = state.activities.find((item) => item.id === activityId);
+      const update = {
+        text,
+        updatedAt: payload.updatedAt || event.createdAt,
+        updatedBy: payload.updatedBy || event.author || ""
+      };
+      if (!activity) {
+        state.pendingActivityUpdates[activityId] = update;
+        return true;
+      }
+      activity.text = update.text;
+      activity.updatedAt = update.updatedAt;
+      activity.updatedBy = update.updatedBy;
+      return true;
+    }
+
+    if (event.type === "activity.delete") {
+      const activityId = String(event.payload.activityId || "");
+      if (!activityId) {
+        return false;
+      }
+      state.deletedActivityIds[activityId] = true;
+      delete state.pendingActivityUpdates[activityId];
+      state.activities = state.activities.filter((item) => item.id !== activityId);
       return true;
     }
 
@@ -927,6 +991,9 @@
   function renderSystems() {
     const query = els.searchSystems.value.trim().toLowerCase();
     const filter = els.statusFilter.value;
+    const openSystemKeys = new Set(Array.from(els.systemList.querySelectorAll(".system-details[open]"))
+      .map((details) => details.closest(".system-card")?.dataset.systemKey)
+      .filter(Boolean));
     const systems = getSystems()
       .filter((system) => {
         if (filter === "active" && system.status === "archived") {
@@ -955,8 +1022,10 @@
     systems.forEach((system) => {
       const activities = activitiesFor(system.name);
       const edsmInfluence = edsmInfluenceMeta(system);
+      const key = systemKey(system.name);
       const card = document.createElement("article");
       card.className = "system-card" + (system.status === "archived" ? " archived" : "");
+      card.dataset.systemKey = key;
       card.innerHTML = `
         <div class="card-head">
           <div>
@@ -972,7 +1041,7 @@
         <p class="meta"><strong>Фракции плана:</strong> ${escapeHtml(selectedFactionNames(system).join(", ") || "не выбраны")}</p>
         <p class="meta"><strong>Действия:</strong> ${activities.length ? `${activities.length} записей, последняя ${formatDate(activities[0].createdAt)}` : "действий еще нет"}</p>
         <p class="meta"><strong>Обновлено:</strong> ${formatDate(system.updatedAt || system.createdAt)}${system.updatedBy ? " · " + escapeHtml(system.updatedBy) : ""}</p>
-        <details class="foldout compact-foldout system-details">
+        <details class="foldout compact-foldout system-details" ${openSystemKeys.has(key) ? "open" : ""}>
           <summary>Открыть систему</summary>
           <section class="system-section">
             <div class="section-head">
@@ -1004,20 +1073,34 @@
       els.systemList.appendChild(card);
     });
 
-    els.systemList.querySelectorAll("button[data-action]").forEach((button) => {
-      button.addEventListener("click", async () => {
-        const system = button.dataset.system;
-        if (button.dataset.action === "influence") {
-          openInfluenceDialog(system);
-        } else if (button.dataset.action === "refresh-edsm") {
-          await refreshSystemEdsm(system, button);
-        } else if (button.dataset.action === "edit") {
-          editSystem(system);
-        } else if (button.dataset.action === "archive") {
-          archiveSystem(system);
-        }
-      });
-    });
+  }
+
+  async function handleSystemListClick(event) {
+    const chartButton = event.target.closest("button[data-chart-toggle]");
+    if (chartButton && els.systemList.contains(chartButton)) {
+      toggleChartFaction(chartButton.dataset.system, chartButton.dataset.chartToggle);
+      return;
+    }
+
+    const button = event.target.closest("button[data-action]");
+    if (!button || !els.systemList.contains(button)) {
+      return;
+    }
+
+    const system = button.dataset.system;
+    if (button.dataset.action === "activity-edit") {
+      editActivity(button.dataset.activity);
+    } else if (button.dataset.action === "activity-delete") {
+      deleteActivity(button.dataset.activity);
+    } else if (button.dataset.action === "influence") {
+      openInfluenceDialog(system);
+    } else if (button.dataset.action === "refresh-edsm") {
+      await refreshSystemEdsm(system, button);
+    } else if (button.dataset.action === "edit") {
+      editSystem(system);
+    } else if (button.dataset.action === "archive") {
+      archiveSystem(system);
+    }
   }
 
   function renderSystemActivities(systemName) {
@@ -1030,12 +1113,121 @@
       <div class="activity-list system-activity-list">
         ${activities.map((activity) => `
           <div class="activity-item">
-            <strong>${escapeHtml(formatDate(activity.createdAt))}${activity.author ? " · " + escapeHtml(activity.author) : ""}</strong>
+            <strong>${escapeHtml(formatDate(activity.createdAt))}</strong>
             <p>${escapeHtml(activity.text)}</p>
+            <p class="meta">Кто сделал: ${escapeHtml(activity.author || "без автора")}${activity.updatedAt ? " · изменено " + escapeHtml(formatDate(activity.updatedAt)) : ""}</p>
+            ${canEditActivity(activity) ? `
+              <div class="activity-actions">
+                <button class="button" data-action="activity-edit" data-activity="${escapeAttr(activity.id)}">Редактировать</button>
+                <button class="button danger" data-action="activity-delete" data-activity="${escapeAttr(activity.id)}">Удалить</button>
+              </div>
+            ` : ""}
           </div>
         `).join("")}
       </div>
     `;
+  }
+
+  function canEditActivity(activity) {
+    const currentAuthor = systemKey(state.author);
+    return Boolean(currentAuthor && systemKey(activity.author) === currentAuthor);
+  }
+
+  function editActivity(activityId) {
+    const activity = state.activities.find((item) => item.id === activityId);
+    if (!activity || !canEditActivity(activity)) {
+      showToast("Редактировать может только автор действия.");
+      return;
+    }
+
+    els.activityEditId.value = activity.id;
+    els.activityEditText.value = activity.text;
+    if (typeof els.activityEditDialog.showModal === "function") {
+      els.activityEditDialog.showModal();
+    } else {
+      els.activityEditDialog.setAttribute("open", "open");
+    }
+    els.activityEditText.focus();
+  }
+
+  function handleActivityEditSubmit(event) {
+    event.preventDefault();
+    const activity = state.activities.find((item) => item.id === els.activityEditId.value);
+    if (!activity || !canEditActivity(activity)) {
+      closeActivityEditDialog();
+      showToast("Редактировать может только автор действия.");
+      return;
+    }
+
+    const nextText = els.activityEditText.value.trim();
+    if (!nextText || nextText === activity.text) {
+      return;
+    }
+
+    recordLocalEvent("activity.update", {
+      activityId: activity.id,
+      system: activity.system,
+      text: nextText,
+      updatedBy: state.author,
+      updatedAt: nowIso()
+    });
+    closeActivityEditDialog();
+    showToast("Действие обновлено.");
+  }
+
+  function closeActivityEditDialog() {
+    els.activityEditId.value = "";
+    els.activityEditText.value = "";
+    if (els.activityEditDialog.open && typeof els.activityEditDialog.close === "function") {
+      els.activityEditDialog.close();
+    } else {
+      els.activityEditDialog.removeAttribute("open");
+    }
+  }
+
+  function deleteActivity(activityId) {
+    const activity = state.activities.find((item) => item.id === activityId);
+    if (!activity || !canEditActivity(activity)) {
+      showToast("Удалить может только автор действия.");
+      return;
+    }
+
+    els.activityDeleteId.value = activity.id;
+    els.activityDeleteText.textContent = activity.text;
+    if (typeof els.activityDeleteDialog.showModal === "function") {
+      els.activityDeleteDialog.showModal();
+    } else {
+      els.activityDeleteDialog.setAttribute("open", "open");
+    }
+  }
+
+  function handleActivityDeleteSubmit(event) {
+    event.preventDefault();
+    const activity = state.activities.find((item) => item.id === els.activityDeleteId.value);
+    if (!activity || !canEditActivity(activity)) {
+      closeActivityDeleteDialog();
+      showToast("Удалить может только автор действия.");
+      return;
+    }
+
+    recordLocalEvent("activity.delete", {
+      activityId: activity.id,
+      system: activity.system,
+      deletedBy: state.author,
+      deletedAt: nowIso()
+    });
+    closeActivityDeleteDialog();
+    showToast("Действие удалено.");
+  }
+
+  function closeActivityDeleteDialog() {
+    els.activityDeleteId.value = "";
+    els.activityDeleteText.textContent = "";
+    if (els.activityDeleteDialog.open && typeof els.activityDeleteDialog.close === "function") {
+      els.activityDeleteDialog.close();
+    } else {
+      els.activityDeleteDialog.removeAttribute("open");
+    }
   }
 
   function selectedFactionNames(system) {
@@ -1047,12 +1239,30 @@
   }
 
   function renderInfluenceChart(system) {
+    return `
+      <div class="influence-chart" data-chart-key="${escapeAttr(systemKey(system.name))}">
+        ${renderInfluenceChartContent(system)}
+      </div>
+    `;
+  }
+
+  function renderInfluenceChartContent(system) {
     const series = buildInfluenceSeries(system);
     if (!series.length) {
       return `<div class="empty-state">Нет данных влияния. Сохраните ручной замер или выберите систему с историей EDSM.</div>`;
     }
 
-    const allPoints = series.flatMap((item) => item.points);
+    const key = systemKey(system.name);
+    const hidden = chartHiddenFactions[key] || new Set();
+    const visibleSeries = series
+      .map((item, index) => ({ ...item, colorIndex: index }))
+      .filter((item) => !hidden.has(item.id));
+    const legend = renderChartLegend(system, series, hidden);
+    if (!visibleSeries.length) {
+      return `<div class="empty-state">Все фракции скрыты в легенде.</div>${legend}`;
+    }
+
+    const allPoints = visibleSeries.flatMap((item) => item.points);
     const minTime = Math.min(...allPoints.map((point) => point.t));
     const maxTime = Math.max(...allPoints.map((point) => point.t));
     const span = Math.max(1, maxTime - minTime);
@@ -1063,23 +1273,25 @@
     const padY = 14;
     const graphW = width - padX * 2;
     const graphH = height - padY * 2;
+    const yMax = chartScaleMax(allPoints);
 
-    const grid = [100, 75, 50, 25, 0].map((value) => {
-      const y = padY + (1 - value / 100) * graphH;
-      const labelX = value === 100 ? 2 : 8;
+    const grid = [yMax, yMax * 0.75, yMax * 0.5, yMax * 0.25, 0].map((value) => {
+      const y = padY + (1 - value / yMax) * graphH;
+      const label = formatNumber(value);
+      const labelX = String(label).length > 2 ? 1 : 8;
       return `
         <line x1="${padX}" y1="${round2(y)}" x2="${width - padX}" y2="${round2(y)}" stroke="#d8e2df" stroke-dasharray="${value === 0 ? "0" : "3 4"}"></line>
-        <text x="${labelX}" y="${round2(y + 4)}" font-size="10" fill="#65726f">${value}</text>
+        <text x="${labelX}" y="${round2(y + 4)}" font-size="10" fill="#65726f">${label}</text>
       `;
     }).join("");
 
-    const lines = series.map((item, index) => {
-      const color = colors[index % colors.length];
+    const lines = visibleSeries.map((item) => {
+      const color = colors[item.colorIndex % colors.length];
       const points = item.points
         .sort((a, b) => a.t - b.t)
         .map((point) => {
           const x = padX + ((point.t - minTime) / span) * graphW;
-          const y = padY + (1 - clampPercent(point.v) / 100) * graphH;
+          const y = padY + (1 - Math.min(clampPercent(point.v), yMax) / yMax) * graphH;
           return `${round2(x)},${round2(y)}`;
         });
       const marker = points.length === 1
@@ -1088,23 +1300,55 @@
       return `<polyline points="${points.join(" ")}" fill="none" stroke="${color}" stroke-width="2"></polyline>${marker}`;
     }).join("");
 
+    return `
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="График влияния">
+        <line x1="${padX}" y1="${padY}" x2="${padX}" y2="${height - padY}" stroke="#d8e2df"></line>
+        <line x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}" stroke="#d8e2df"></line>
+        ${grid}
+        ${lines}
+      </svg>
+      ${legend}
+    `;
+  }
+
+  function renderChartLegend(system, series, hidden) {
+    const colors = ["#0f766e", "#b42318", "#256b8f", "#a15c00", "#6f42c1"];
     const legend = series.map((item, index) => {
       const color = colors[index % colors.length];
       const latest = item.points[item.points.length - 1];
-      return `<span><i style="background:${color}"></i>${escapeHtml(item.name)} ${formatNumber(latest.v)}%</span>`;
+      const isHidden = hidden.has(item.id);
+      return `
+        <button class="chart-toggle${isHidden ? " is-hidden" : ""}" type="button" data-system="${escapeAttr(system.name)}" data-chart-toggle="${escapeAttr(item.id)}" aria-pressed="${isHidden ? "false" : "true"}">
+          <i style="background:${color}"></i>
+          <span>${escapeHtml(item.name)} ${formatNumber(latest.v)}%</span>
+        </button>
+      `;
     }).join("");
+    return `<div class="chart-legend">${legend}</div>`;
+  }
 
-    return `
-      <div class="influence-chart">
-        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="График влияния">
-          <line x1="${padX}" y1="${padY}" x2="${padX}" y2="${height - padY}" stroke="#d8e2df"></line>
-          <line x1="${padX}" y1="${height - padY}" x2="${width - padX}" y2="${height - padY}" stroke="#d8e2df"></line>
-          ${grid}
-          ${lines}
-        </svg>
-        <div class="chart-legend">${legend}</div>
-      </div>
-    `;
+  function chartScaleMax(points) {
+    const max = Math.max(...points.map((point) => clampPercent(point.v)), 1);
+    return Math.min(100, Math.max(1, Math.ceil(max / 5) * 5));
+  }
+
+  function toggleChartFaction(systemName, factionId) {
+    const key = systemKey(systemName);
+    if (!chartHiddenFactions[key]) {
+      chartHiddenFactions[key] = new Set();
+    }
+    const hidden = chartHiddenFactions[key];
+    if (hidden.has(factionId)) {
+      hidden.delete(factionId);
+    } else {
+      hidden.add(factionId);
+    }
+
+    const system = state.systems[key];
+    const chart = els.systemList.querySelector(`[data-chart-key="${cssEscape(key)}"]`);
+    if (system && chart) {
+      chart.innerHTML = renderInfluenceChartContent(system);
+    }
   }
 
   function buildInfluenceSeries(system) {
@@ -1201,6 +1445,8 @@
     state.activities = [];
     state.events = [];
     state.appliedEventIds = {};
+    state.deletedActivityIds = {};
+    state.pendingActivityUpdates = {};
 
     selectedSystem = null;
     selectedFactions = [];
@@ -1220,6 +1466,8 @@
     els.factionList.innerHTML = "";
     els.systemProblem.disabled = false;
     els.importReport.value = "";
+    closeActivityEditDialog();
+    closeActivityDeleteDialog();
     closeInfluenceDialog();
     saveState();
     render();
@@ -1435,6 +1683,12 @@
     if (event.type === "activity.add") {
       return `Действие: ${event.payload.system || "без системы"}`;
     }
+    if (event.type === "activity.update") {
+      return `Правка действия: ${event.payload.system || "без системы"}`;
+    }
+    if (event.type === "activity.delete") {
+      return `Удаление действия: ${event.payload.system || "без системы"}`;
+    }
     if (event.type === "influence.snapshot") {
       return `Замер влияния: ${event.payload.system || "без системы"}`;
     }
@@ -1456,6 +1710,12 @@
     }
     if (event.type === "activity.add") {
       return event.payload.text || "Действие добавлено.";
+    }
+    if (event.type === "activity.update") {
+      return event.payload.text || "Действие изменено.";
+    }
+    if (event.type === "activity.delete") {
+      return `Удалено действие ${shortId(event.payload.activityId || "")}.`;
     }
     if (event.type === "influence.snapshot") {
       const total = sumInfluence(event.payload.factions || []);

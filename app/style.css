@@ -349,17 +349,31 @@ textarea:focus {
   font-size: 12px;
 }
 
-.chart-legend span {
+.chart-toggle {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  padding: 5px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
 }
 
-.chart-legend i {
+.chart-toggle.is-hidden {
+  opacity: 0.42;
+  text-decoration: line-through;
+}
+
+.chart-toggle i {
   width: 10px;
   height: 10px;
   border-radius: 999px;
+  flex: 0 0 auto;
 }
 
 .toolbar {
@@ -529,6 +543,19 @@ textarea:focus {
 .activity-item p {
   margin: 0;
   line-height: 1.45;
+}
+
+.activity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.activity-actions .button {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 13px;
 }
 
 .timeline-item {
