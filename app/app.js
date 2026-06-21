@@ -32,18 +32,22 @@
     "report.import": "Импорт"
   };
 
+  const chartColors = ["#0f766e", "#b42318", "#256b8f", "#287947", "#4b5563", "#0b5e58"];
+
   const state = loadState();
   let selectedSystem = null;
   let selectedFactions = [];
   let searchTimer = 0;
   let searchRequest = 0;
   let influenceSystemName = "";
+  let activitySystemName = "";
   let pendingImport = [];
   let pendingImportMeta = {};
   const chartHiddenFactions = {};
 
   const els = {
     authorName: document.querySelector("#authorName"),
+    systemCreatePanel: document.querySelector(".system-create-panel"),
     systemForm: document.querySelector("#systemForm"),
     systemName: document.querySelector("#systemName"),
     systemSuggestions: document.querySelector("#systemSuggestions"),
@@ -53,8 +57,10 @@
     factionHint: document.querySelector("#factionHint"),
     factionList: document.querySelector("#factionList"),
     lookupResult: document.querySelector("#lookupResult"),
+    activityDialog: document.querySelector("#activityDialog"),
     activityForm: document.querySelector("#activityForm"),
-    activitySystem: document.querySelector("#activitySystem"),
+    activityTitle: document.querySelector("#activityTitle"),
+    activityHint: document.querySelector("#activityHint"),
     activityText: document.querySelector("#activityText"),
     activityEditDialog: document.querySelector("#activityEditDialog"),
     activityEditForm: document.querySelector("#activityEditForm"),
@@ -107,6 +113,7 @@
     els.systemName.addEventListener("input", handleSystemNameInput);
     els.systemForm.addEventListener("submit", handleSystemSubmit);
     els.activityForm.addEventListener("submit", handleActivitySubmit);
+    els.activityForm.querySelector("[data-close-activity]").addEventListener("click", closeActivityDialog);
     els.activityEditForm.addEventListener("submit", handleActivityEditSubmit);
     els.activityEditForm.querySelector("[data-close-activity-edit]").addEventListener("click", closeActivityEditDialog);
     els.activityDeleteForm.addEventListener("submit", handleActivityDeleteSubmit);
@@ -118,6 +125,7 @@
     els.statusFilter.addEventListener("change", renderSystems);
     els.systemList.addEventListener("click", handleSystemListClick);
     els.exportReport.addEventListener("click", exportReport);
+    els.importReport.addEventListener("click", guardImportReport);
     els.importReport.addEventListener("change", handleImportFile);
     els.openSyncJournal.addEventListener("click", openSyncJournal);
     els.clearAllData.addEventListener("click", clearAllData);
@@ -181,6 +189,24 @@
     saveState();
     renderSystems();
     renderTimeline();
+  }
+
+  function requireCommander(message) {
+    const author = cleanName(els.authorName.value);
+    if (author) {
+      if (state.author !== author) {
+        state.author = author;
+        els.authorName.value = author;
+        saveState();
+      }
+      return true;
+    }
+
+    state.author = "";
+    saveState();
+    showToast(message || "Сначала укажите позывной командира.");
+    els.authorName.focus();
+    return false;
   }
 
   function handleSystemNameInput() {
@@ -455,16 +481,27 @@
     els.factionList.innerHTML = "";
     els.systemProblem.disabled = false;
     els.lookupResult.textContent = "";
+    els.systemCreatePanel.removeAttribute("open");
     showToast("Система сохранена.");
   }
 
   function handleActivitySubmit(event) {
     event.preventDefault();
-    const system = els.activitySystem.value;
+    const system = activitySystemName;
     const text = els.activityText.value.trim();
 
-    if (!system || !text) {
-      showToast("Выберите систему и добавьте текст действия.");
+    if (!requireCommander("Введите позывной командира перед записью действия.")) {
+      return;
+    }
+
+    if (!system || !state.systems[systemKey(system)]) {
+      showToast("Откройте конкретную систему и запишите действие из нее.");
+      closeActivityDialog();
+      return;
+    }
+
+    if (!text) {
+      showToast("Добавьте текст действия.");
       return;
     }
 
@@ -476,6 +513,7 @@
     });
 
     els.activityText.value = "";
+    closeActivityDialog();
     showToast("Запись добавлена.");
   }
 
@@ -507,6 +545,7 @@
     selectedFactions = activeFactions(system.factions || []);
     els.systemSuggestions.innerHTML = "";
     els.lookupResult.textContent = system.edsm ? "EDSM-данные уже сохранены для этой системы." : "";
+    els.systemCreatePanel.setAttribute("open", "open");
     renderFactionPicker(selectedFactions, system.controllingFaction || null);
     (system.selectedFactionIds || []).forEach((id) => {
       const input = els.factionList.querySelector(`input[value="${cssEscape(id)}"]`);
@@ -729,31 +768,41 @@
   }
 
   function render() {
-    renderActivitySystems();
     renderSystems();
     renderTimeline();
   }
 
-  function renderActivitySystems() {
-    const activeSystems = getSystems()
-      .filter((system) => system.status !== "archived")
-      .sort(sortSystems);
-
-    els.activitySystem.innerHTML = "";
-    if (!activeSystems.length) {
-      const option = document.createElement("option");
-      option.value = "";
-      option.textContent = "Сначала добавьте систему";
-      els.activitySystem.appendChild(option);
+  function openActivityDialog(systemName) {
+    const system = state.systems[systemKey(systemName)];
+    if (!system) {
+      showToast("Система не найдена.");
       return;
     }
 
-    activeSystems.forEach((system) => {
-      const option = document.createElement("option");
-      option.value = system.name;
-      option.textContent = system.name;
-      els.activitySystem.appendChild(option);
-    });
+    if (!requireCommander("Введите позывной командира перед записью действия.")) {
+      return;
+    }
+
+    activitySystemName = system.name;
+    els.activityTitle.textContent = `Записать действие: ${system.name}`;
+    els.activityHint.textContent = `Автор: ${state.author}. Запись попадет в журнал этой системы.`;
+    els.activityText.value = "";
+    if (typeof els.activityDialog.showModal === "function") {
+      els.activityDialog.showModal();
+    } else {
+      els.activityDialog.setAttribute("open", "open");
+    }
+    els.activityText.focus();
+  }
+
+  function closeActivityDialog() {
+    activitySystemName = "";
+    els.activityText.value = "";
+    if (els.activityDialog.open && typeof els.activityDialog.close === "function") {
+      els.activityDialog.close();
+    } else {
+      els.activityDialog.removeAttribute("open");
+    }
   }
 
   function openInfluenceDialog(systemName) {
@@ -1060,7 +1109,10 @@
             <p class="meta"><strong>Статус:</strong> ${escapeHtml(statusLabels[system.status] || "План")} · <strong>Срочность:</strong> ${escapeHtml(priorityLabels[system.priority] || "Обычная")}</p>
           </section>
           <section class="system-section">
-            <h4>Список действий</h4>
+            <div class="section-head">
+              <h4>Список действий</h4>
+              <button class="button primary" data-action="activity" data-system="${escapeAttr(system.name)}">Записать действие</button>
+            </div>
             ${renderSystemActivities(system.name)}
           </section>
         </details>
@@ -1092,6 +1144,8 @@
       editActivity(button.dataset.activity);
     } else if (button.dataset.action === "activity-delete") {
       deleteActivity(button.dataset.activity);
+    } else if (button.dataset.action === "activity") {
+      openActivityDialog(system);
     } else if (button.dataset.action === "influence") {
       openInfluenceDialog(system);
     } else if (button.dataset.action === "refresh-edsm") {
@@ -1266,7 +1320,6 @@
     const minTime = Math.min(...allPoints.map((point) => point.t));
     const maxTime = Math.max(...allPoints.map((point) => point.t));
     const span = Math.max(1, maxTime - minTime);
-    const colors = ["#0f766e", "#b42318", "#256b8f", "#a15c00", "#6f42c1"];
     const width = 320;
     const height = 130;
     const padX = 28;
@@ -1286,7 +1339,7 @@
     }).join("");
 
     const lines = visibleSeries.map((item) => {
-      const color = colors[item.colorIndex % colors.length];
+      const color = chartColors[item.colorIndex % chartColors.length];
       const points = item.points
         .sort((a, b) => a.t - b.t)
         .map((point) => {
@@ -1312,9 +1365,8 @@
   }
 
   function renderChartLegend(system, series, hidden) {
-    const colors = ["#0f766e", "#b42318", "#256b8f", "#a15c00", "#6f42c1"];
     const legend = series.map((item, index) => {
-      const color = colors[index % colors.length];
+      const color = chartColors[index % chartColors.length];
       const latest = item.points[item.points.length - 1];
       const isHidden = hidden.has(item.id);
       return `
@@ -1451,6 +1503,7 @@
     selectedSystem = null;
     selectedFactions = [];
     influenceSystemName = "";
+    activitySystemName = "";
     pendingImport = [];
     pendingImportMeta = {};
     searchRequest += 1;
@@ -1462,10 +1515,12 @@
     els.influenceForm.reset();
     els.systemSuggestions.innerHTML = "";
     els.lookupResult.textContent = "";
+    els.systemCreatePanel.removeAttribute("open");
     els.factionHint.textContent = "Выберите систему из списка EDSM, чтобы загрузить фракции.";
     els.factionList.innerHTML = "";
     els.systemProblem.disabled = false;
     els.importReport.value = "";
+    closeActivityDialog();
     closeActivityEditDialog();
     closeActivityDeleteDialog();
     closeInfluenceDialog();
@@ -1474,7 +1529,17 @@
     showToast("Все локальные данные очищены.");
   }
 
+  function guardImportReport(event) {
+    if (!requireCommander("Введите позывной командира перед загрузкой отчета.")) {
+      event.preventDefault();
+    }
+  }
+
   function exportReport() {
+    if (!requireCommander("Введите позывной командира перед выгрузкой отчета.")) {
+      return;
+    }
+
     if (!state.events.length) {
       showToast("Пока нечего экспортировать.");
       return;
@@ -1514,6 +1579,10 @@
     const file = event.target.files[0];
     event.target.value = "";
     if (!file) {
+      return;
+    }
+
+    if (!requireCommander("Введите позывной командира перед загрузкой отчета.")) {
       return;
     }
 

@@ -102,6 +102,17 @@ textarea {
   box-shadow: var(--shadow);
 }
 
+.panel > summary {
+  cursor: pointer;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 750;
+}
+
+.system-create-panel[open] > summary {
+  margin-bottom: 14px;
+}
+
 .journal-panel {
   margin-top: 18px;
 }

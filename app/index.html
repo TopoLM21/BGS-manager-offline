@@ -32,8 +32,8 @@
 
     <main class="workspace">
       <aside class="sidebar">
-        <section class="panel">
-          <h2>Новая система</h2>
+        <details class="panel system-create-panel">
+          <summary>Новая система</summary>
           <form id="systemForm" class="stack">
             <label>
               Система
@@ -76,23 +76,7 @@
 
             <button type="submit" class="button primary">Добавить систему</button>
           </form>
-        </section>
-
-        <section class="panel">
-          <h2>Запись действия</h2>
-          <form id="activityForm" class="stack">
-            <label>
-              Система
-              <select id="activitySystem" required></select>
-            </label>
-            <label>
-              Что сделано
-              <textarea id="activityText" rows="4" placeholder="Например: сделал 5 доставок, влияние проверим после тика" required></textarea>
-            </label>
-            <p class="muted small-note">Дата, время и автор попадут в журнал автоматически.</p>
-            <button class="button primary" type="submit">Записать действие</button>
-          </form>
-        </section>
+        </details>
       </aside>
 
       <section class="content">
@@ -147,6 +131,26 @@
         <div class="button-row end">
           <button class="button" type="button" data-close-influence>Отмена</button>
           <button class="button primary" type="submit">Сохранить замер</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="activityDialog">
+      <form id="activityForm" class="dialog-content stack">
+        <div class="toolbar compact">
+          <div>
+            <h2 id="activityTitle">Записать действие</h2>
+            <p id="activityHint" class="muted">Запись будет добавлена в выбранную систему.</p>
+          </div>
+        </div>
+        <label>
+          Что сделано
+          <textarea id="activityText" rows="5" placeholder="Например: сделал 5 доставок, влияние проверим после тика" required></textarea>
+        </label>
+        <p class="muted small-note">Дата, время и позывной попадут в журнал автоматически.</p>
+        <div class="button-row end">
+          <button class="button" type="button" data-close-activity>Отмена</button>
+          <button class="button primary" type="submit">Записать действие</button>
         </div>
       </form>
     </dialog>
